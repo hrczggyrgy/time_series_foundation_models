@@ -744,12 +744,23 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
                     compile=False,
                 )
 
+                # Get available non-experimental models to filter selected_models
+                service: ForecastingService = st.session_state.service
+                available_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=False)
+                available_keys = {m["model_key"] for m in available_models}
+                
+                # Filter selected_models to only include available (non-experimental) models
+                filtered_models = [m for m in selected_models if m in available_keys]
+                if not filtered_models:
+                    st.error("No valid models selected. Please select at least one available model.")
+                    return
+
                 # Run forecasts for all selected models
                 policy = ui_config.license_policy
                 acknowledged = set()  # All models enabled
 
                 jobs = {}
-                for model_key in selected_models:
+                for model_key in filtered_models:
                     with st.spinner(f"Running {model_key}..."):
                         if ui_config.backtest_mode:
                             job = service.run_forecast_with_backtest(
@@ -862,90 +873,106 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
 
 def render_tab_evaluation(ui_config: ForecastConfigUI, selected_models: list[str]) -> None:
     st.markdown("### 4. Evaluation")
-    job = st.session_state.forecast_job
-    meta = st.session_state.run_metadata
-    bt = st.session_state.backtest_result
+    jobs = st.session_state.get("forecast_jobs", {})
+    meta = st.session_state.get("run_metadata", {})
+    backtest_results = st.session_state.get("backtest_results", {})
     prof = st.session_state.profile_results
 
-    if job is None or meta is None:
+    if not jobs or not meta:
         st.info("Run a forecast first in the Forecast tab.")
         return
     if not meta.get("backtest_mode", False):
         st.info("Enable backtesting mode in the sidebar for accuracy metrics.")
         return
 
-    if bt is None:
-        # Check if there's a backtest error stored in the job timing
-        backtest_error = job.timing.get("backtest_error") if job else None
-        if backtest_error:
-            st.error(f"Backtest failed: {backtest_error}")
-            with st.expander("Technical details"):
-                st.code(backtest_error)
-        else:
-            st.warning("Backtest results not available.")
-        return
-
-    # Aggregate metrics
-    agg_pm = bt.aggregate_point_metrics
-    agg_prob = bt.aggregate_probabilistic_metrics
     interval_cov = ui_config.interval_coverage
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("MAE", f"{agg_pm.mae:.3f}", help="Average absolute error. Lower is better.")
-    c2.metric("RMSE", f"{agg_pm.rmse:.3f}", help="Penalizes large errors more strongly.")
-    c3.metric("MAPE", "N/A" if math.isnan(agg_pm.mape) else f"{agg_pm.mape:.2f}%", help="Scale-free percentage error.")
-    c4.metric("MASE", "N/A" if math.isnan(agg_pm.mase) else f"{agg_pm.mase:.3f}", help="Relative to seasonal naive baseline.")
-    c5.metric("Coverage", f"{agg_prob.interval_coverage.get(interval_cov, 0):.1f}%" if agg_prob else "N/A", help="Share of actuals inside interval.")
+    # Aggregate metrics for all models
+    all_metrics = {}
+    for model_key in selected_models:
+        bt = backtest_results.get(model_key)
+        if bt is None:
+            continue
+        agg_pm = bt.aggregate_point_metrics
+        agg_prob = bt.aggregate_probabilistic_metrics
+        all_metrics[model_key] = {
+            "MAE": agg_pm.mae,
+            "RMSE": agg_pm.rmse,
+            "MAPE": agg_pm.mape,
+            "MASE": agg_pm.mase,
+            "Coverage": agg_prob.interval_coverage.get(interval_cov, math.nan) if agg_prob else math.nan,
+            "backtest": bt,
+        }
 
-    st.markdown("#### Evaluation summary")
-    metrics_dict = {"MAE": agg_pm.mae, "RMSE": agg_pm.rmse, "MAPE": agg_pm.mape, "Coverage": agg_prob.interval_coverage.get(interval_cov, math.nan) if agg_prob else math.nan}
-    for line in explain_backtest_results(metrics_dict, meta):
-        st.markdown(f"- {line}")
+    if not all_metrics:
+        st.warning("No backtest results available for selected models.")
+        return
 
-    # Per-window chart
-    if bt.windows:
-        # Convert to format expected by plot_rolling_backtest
-        plot_windows = []
-        for w in bt.windows:
-            plot_windows.append({
-                "window": w.window_id,
-                "test_dates": w.test_dates,
-                "actuals": w.test_actuals[0] if w.test_actuals.ndim == 2 else w.test_actuals,
-                "point": w.point_forecasts[0] if w.point_forecasts.ndim == 2 else w.point_forecasts,
-            })
-        st.plotly_chart(plot_rolling_backtest(plot_windows, st.session_state.df), use_container_width=True)
+    # Summary comparison table
+    st.markdown("#### Model comparison")
+    comparison_data = []
+    for model_key, metrics in all_metrics.items():
+        comparison_data.append({
+            "Model": model_key,
+            "MAE": round(metrics["MAE"], 3),
+            "RMSE": round(metrics["RMSE"], 3),
+            "MAPE": "N/A" if math.isnan(metrics["MAPE"]) else f"{metrics['MAPE']:.2f}%",
+            "MASE": "N/A" if math.isnan(metrics["MASE"]) else f"{metrics['MASE']:.3f}",
+            "Coverage %": "N/A" if math.isnan(metrics["Coverage"]) else f"{metrics['Coverage']:.1f}%",
+        })
+    comp_df = pd.DataFrame(comparison_data)
+    st.dataframe(comp_df, use_container_width=True, hide_index=True)
 
-        # Per-window metrics table
-        wdf = pd.DataFrame([{
-            "Window": w.window_id,
-            "Train ends": str(pd.Timestamp(w.train_end_date).date()),
-            "MAE": round(w.point_metrics.mae, 3),
-            "RMSE": round(w.point_metrics.rmse, 3),
-            "MAPE": round(w.point_metrics.mape, 2) if not math.isnan(w.point_metrics.mape) else "N/A",
-            "MASE": round(w.point_metrics.mase, 3) if not math.isnan(w.point_metrics.mase) else "N/A",
-            "Coverage %": round(w.probabilistic_metrics.interval_coverage.get(ui_config.interval_coverage, math.nan), 1) if w.probabilistic_metrics else "N/A",
-        } for w in bt.windows])
-        st.dataframe(wdf, use_container_width=True, hide_index=True)
+    # Per-window chart for each model
+    st.markdown("#### Rolling backtest windows")
+    for model_key, metrics in all_metrics.items():
+        bt = metrics["backtest"]
+        if bt.windows:
+            plot_windows = []
+            for w in bt.windows:
+                plot_windows.append({
+                    "window": w.window_id,
+                    "test_dates": w.test_dates,
+                    "actuals": w.test_actuals[0] if w.test_actuals.ndim == 2 else w.test_actuals,
+                    "point": w.point_forecasts[0] if w.point_forecasts.ndim == 2 else w.point_forecasts,
+                })
+            st.markdown(f"##### {model_key}")
+            st.plotly_chart(plot_rolling_backtest(plot_windows, st.session_state.df), use_container_width=True)
 
-    # Forecast vs actual + error distribution
-    primary = prof.get("primary_target") if prof else None
-    if primary and job.forecast_df is not None:
-        fdf = job.forecast_df
-        if "Actual" in fdf.columns:
-            lo_col = [c for c in fdf.columns if c.startswith("Lower_")][0]
-            hi_col = [c for c in fdf.columns if c.startswith("Upper_")][0]
-            left, right = st.columns(2)
-            with left:
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=fdf["Date"], y=fdf[hi_col], mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip"))
-                fig.add_trace(go.Scatter(x=fdf["Date"], y=fdf[lo_col], mode="lines", fill="tonexty", name="Interval", line=dict(width=0), fillcolor="rgba(99,102,241,0.12)"))
-                fig.add_trace(go.Scatter(x=fdf["Date"], y=fdf["Forecast"], mode="lines", name="Forecast", line=dict(color="#111827", width=2.5)))
-                fig.add_trace(go.Scatter(x=fdf["Date"], y=fdf["Actual"], mode="lines+markers", name="Actual", line=dict(color="#059669", width=2, dash="dot"), marker=dict(size=5)))
-                fig = style_figure(fig, "Forecast vs actual", 380, "Value")
-                fig.update_xaxes(title="Date")
-                st.plotly_chart(fig, use_container_width=True)
-            with right:
-                st.plotly_chart(plot_error_distribution(fdf), use_container_width=True)
+            # Per-window metrics table
+            wdf = pd.DataFrame([{
+                "Window": w.window_id,
+                "Train ends": str(pd.Timestamp(w.train_end_date).date()),
+                "MAE": round(w.point_metrics.mae, 3),
+                "RMSE": round(w.point_metrics.rmse, 3),
+                "MAPE": round(w.point_metrics.mape, 2) if not math.isnan(w.point_metrics.mape) else "N/A",
+                "MASE": round(w.point_metrics.mase, 3) if not math.isnan(w.point_metrics.mase) else "N/A",
+                "Coverage %": round(w.probabilistic_metrics.interval_coverage.get(ui_config.interval_coverage, math.nan), 1) if w.probabilistic_metrics else "N/A",
+            } for w in bt.windows])
+            st.dataframe(wdf, use_container_width=True, hide_index=True)
+
+    # Forecast vs actual + error distribution for primary model
+    primary_model = selected_models[0] if selected_models else None
+    if primary_model and primary_model in jobs:
+        job = jobs[primary_model]
+        primary = prof.get("primary_target") if prof else None
+        if primary and job.forecast_df is not None:
+            fdf = job.forecast_df
+            if "Actual" in fdf.columns:
+                lo_col = [c for c in fdf.columns if c.startswith("Lower_")][0]
+                hi_col = [c for c in fdf.columns if c.startswith("Upper_")][0]
+                left, right = st.columns(2)
+                with left:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=fdf["Date"], y=fdf["Forecast"], mode="lines", name="Forecast", line=dict(color="#111827", width=2.5)))
+                    fig.add_trace(go.Scatter(x=fdf["Date"], y=fdf[hi_col], mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip"))
+                    fig.add_trace(go.Scatter(x=fdf["Date"], y=fdf[lo_col], mode="lines", fill="tonexty", name="Interval", line=dict(width=0), fillcolor="rgba(99,102,241,0.12)"))
+                    fig.add_trace(go.Scatter(x=fdf["Date"], y=fdf["Actual"], mode="lines+markers", name="Actual", line=dict(color="#059669", width=2, dash="dot"), marker=dict(size=5)))
+                    fig = style_figure(fig, "Forecast vs actual", 380, "Value")
+                    fig.update_xaxes(title="Date")
+                    st.plotly_chart(fig, use_container_width=True)
+                with right:
+                    st.plotly_chart(plot_error_distribution(fdf), use_container_width=True)
 
 
 def render_tab_comparison(selected_models: list[str]) -> None:
