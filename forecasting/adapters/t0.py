@@ -182,27 +182,37 @@ class T0GammaAdapter(BaseAdapter):
         )
         warnings.extend(q_warnings)
 
-        # Interpolate to requested levels if different from native
+        # T0 model returns quantiles at the requested levels directly
+        # Only interpolate if we have more quantiles than requested (shouldn't happen with current API)
         requested_levels = np.array(request.quantile_levels)
-        native_levels = np.array(self.capabilities.native_quantile_levels)
-
-        if not np.array_equal(requested_levels, native_levels):
-            quantiles = self._interpolate_quantiles(quantiles, native_levels, requested_levels)
-            warnings.append(
-                f"Interpolated quantiles from native {len(native_levels)} levels to requested {len(requested_levels)} levels"
-            )
+        n_returned_quantiles = quantiles.shape[-1]
+        
+        if n_returned_quantiles == len(requested_levels):
+            # Model returned quantiles at requested levels - no interpolation needed
+            final_quantile_levels = requested_levels
+            final_quantiles = quantiles
+        else:
+            # Fallback: interpolate from native to requested
+            native_levels = np.array(self.capabilities.native_quantile_levels)
+            if not np.array_equal(requested_levels, native_levels):
+                quantiles = self._interpolate_quantiles(quantiles, native_levels, requested_levels)
+                warnings.append(
+                    f"Interpolated quantiles from native {len(native_levels)} levels to requested {len(requested_levels)} levels"
+                )
+            final_quantile_levels = requested_levels
+            final_quantiles = quantiles
 
         return self._build_result(
             point=point,
-            quantiles=quantiles,
-            quantile_levels=requested_levels,
+            quantiles=final_quantiles,
+            quantile_levels=final_quantile_levels,
             request=request,
             point_definition="median",
             context_used=min(n_history, self.capabilities.max_context_length or n_history),
             warnings=warnings,
             metadata={
                 "device": str(device),
-                "native_quantile_levels": native_levels.tolist(),
+                "native_quantile_levels": self.capabilities.native_quantile_levels,
             },
         )
 
