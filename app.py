@@ -285,15 +285,17 @@ def analyze_seasonality(values: np.ndarray, freq: str) -> dict[str, Any]:
 def profile_timeseries(df: pd.DataFrame, target_cols: list[str]) -> dict[str, Any]:
     """Profile all target columns."""
     profiles = {}
-    for col in target_cols:
+    for i, col in enumerate(target_cols):
         # Use normalized 'y' column if available (after prepare_dataframe normalization)
-        actual_col = "y" if "y" in df.columns and col == target_cols[0] else col
+        actual_col = "y" if "y" in df.columns and i == 0 else col
         values = df[actual_col].to_numpy(dtype=float)
         freq = infer_frequency_safe(df["ds"])
         gaps, gap_share = detect_irregular_gaps(df["ds"])
         outliers = detect_outliers(df[actual_col])
         ctx_used = min(len(df), MODEL_CONTEXT_LIMIT)
-        profiles[col] = {
+        # Store with normalized key for internal consistency
+        normalized_key = "y" if i == 0 and "y" in df.columns else col
+        profiles[normalized_key] = {
             "basic_stats": {
                 "n_observations": int(len(df)),
                 "mean": float(np.mean(values)), "std": float(np.std(values)),
@@ -312,7 +314,7 @@ def profile_timeseries(df: pd.DataFrame, target_cols: list[str]) -> dict[str, An
             "stationarity": test_stationarity(values),
             "seasonality": analyze_seasonality(values, freq),
         }
-    # primary_target is the normalized column name for internal use
+    # primary_target uses normalized column name for internal use
     primary_internal = "y" if "y" in df.columns and target_cols else (target_cols[0] if target_cols else None)
     return {"targets": profiles, "primary_target": primary_internal}
 
