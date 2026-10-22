@@ -238,7 +238,18 @@ class ForecastingService:
         adapter = self.registry.get_adapter(model_key, runtime, policy, acknowledged)
 
         df = parsed_data.df
-        target_history = df[parsed_data.target_columns].T.values
+        # Map original target column names to actual dataframe column names
+        # First target is normalized to 'y'
+        actual_target_columns = []
+        for i, col in enumerate(parsed_data.target_columns):
+            if i == 0 and "y" in df.columns:
+                actual_target_columns.append("y")
+            elif col in df.columns:
+                actual_target_columns.append(col)
+            else:
+                actual_target_columns.append(col)
+
+        target_history = df[actual_target_columns].T.values
         history_index = df["ds"]
 
         past_cov = None

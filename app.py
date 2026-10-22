@@ -604,6 +604,7 @@ def render_tab_data(data_source: str, ui_config: ForecastConfigUI) -> None:
                 return
 
         st.session_state.df = parsed.df
+        st.session_state.parsed_data = parsed  # Store full ParsedData for forecasting
         st.session_state.date_col = date_col
         st.session_state.target_cols = parsed.target_columns
         st.session_state.past_covariate_cols = parsed.past_covariate_columns
@@ -755,7 +756,7 @@ def render_tab_forecast(ui_config: ForecastConfigUI) -> None:
                 if ui_config.backtest_mode:
                     job = service.run_forecast_with_backtest(
                         model_key=ui_config.model_key,
-                        parsed_data=st.session_state.validation_report,
+                        parsed_data=st.session_state.parsed_data,
                         horizon=horizon,
                         n_windows=ui_config.n_backtest_windows,
                         runtime_config=runtime,
@@ -769,7 +770,7 @@ def render_tab_forecast(ui_config: ForecastConfigUI) -> None:
                 else:
                     job = service.run_forecast(
                         model_key=ui_config.model_key,
-                        parsed_data=st.session_state.validation_report,
+                        parsed_data=st.session_state.parsed_data,
                         horizon=horizon,
                         runtime_config=runtime,
                         business_days_only=ui_config.business_days_only,
@@ -867,7 +868,7 @@ def render_tab_forecast(ui_config: ForecastConfigUI) -> None:
     st.caption(f"Run: {meta['run_timestamp_utc']} · Context: {meta['ctx_used']:,} pts · Horizon: {meta['horizon']} · Interval: {interval_label} · Model: {result.model_key} ({result.checkpoint_id})")
 
 
-def render_tab_evaluation() -> None:
+def render_tab_evaluation(ui_config: ForecastConfigUI) -> None:
     st.markdown("### 4. Evaluation")
     job = st.session_state.forecast_job
     meta = st.session_state.run_metadata
@@ -888,16 +889,17 @@ def render_tab_evaluation() -> None:
     # Aggregate metrics
     agg_pm = bt.aggregate_point_metrics
     agg_prob = bt.aggregate_probabilistic_metrics
+    interval_cov = ui_config.interval_coverage
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("MAE", f"{agg_pm.mae:.3f}", help="Average absolute error. Lower is better.")
     c2.metric("RMSE", f"{agg_pm.rmse:.3f}", help="Penalizes large errors more strongly.")
     c3.metric("MAPE", "N/A" if math.isnan(agg_pm.mape) else f"{agg_pm.mape:.2f}%", help="Scale-free percentage error.")
     c4.metric("MASE", "N/A" if math.isnan(agg_pm.mase) else f"{agg_pm.mase:.3f}", help="Relative to seasonal naive baseline.")
-    c5.metric("Coverage", f"{agg_prob.interval_coverage.get(ui_config.interval_coverage, 0):.1f}%" if agg_prob else "N/A", help="Share of actuals inside interval.")
+    c5.metric("Coverage", f"{agg_prob.interval_coverage.get(interval_cov, 0):.1f}%" if agg_prob else "N/A", help="Share of actuals inside interval.")
 
     st.markdown("#### Evaluation summary")
-    metrics_dict = {"MAE": agg_pm.mae, "RMSE": agg_pm.rmse, "MAPE": agg_pm.mape, "Coverage": agg_prob.interval_coverage.get(ui_config.interval_coverage, math.nan) if agg_prob else math.nan}
+    metrics_dict = {"MAE": agg_pm.mae, "RMSE": agg_pm.rmse, "MAPE": agg_pm.mape, "Coverage": agg_prob.interval_coverage.get(interval_cov, math.nan) if agg_prob else math.nan}
     for line in explain_backtest_results(metrics_dict, meta):
         st.markdown(f"- {line}")
 
@@ -967,7 +969,7 @@ def main() -> None:
     with tab1: render_tab_data(data_source, ui_config)
     with tab2: render_tab_diagnostics()
     with tab3: render_tab_forecast(ui_config)
-    with tab4: render_tab_evaluation()
+    with tab4: render_tab_evaluation(ui_config)
 
 
 if __name__ == "__main__":
