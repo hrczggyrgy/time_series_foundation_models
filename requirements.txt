@@ -1,22 +1,10 @@
-# Core UI & data
+# Core app (permissive models only: TimesFM 2.5, t0-gamma, naive baselines)
 streamlit>=1.28.0,<2.0
 pandas>=2.0.0,<3.0
 numpy>=2.0.0,<3.0
-
-# Visualization
 plotly>=5.14.0,<6.0
-
-# Deep learning
-torch>=2.4.0
-
-# Statistical analysis
+torch>=2.4.0,<3.0
 scipy>=1.10.0,<2.0
 statsmodels>=0.14.0,<1.0
-
-# Permissive foundation models (Apache-2.0 weights)
 timesfm[torch]==2.0.2
 tfc-t0[torch]>=0.6.0,<1.0
-
-# Restricted foundation models (require license acknowledgment)
-# timesfm[torch]>=3.0.0,<4.0  # TimesFM 3.0 (non-commercial weights)
-timestral @ git+https://github.com/mistralai/timestral@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff
