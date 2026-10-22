@@ -535,11 +535,12 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
         caps = model_info
         max_ctx = f"{caps['max_context']:,}" if caps['max_context'] else 'N/A'
         max_hz = f"{caps['max_horizon']:,}" if caps['max_horizon'] else 'N/A'
+        exp_str = " ⚠️ EXPERIMENTAL" if caps.get('experimental', False) else ""
         st.sidebar.caption(f"""Model: `{model_options[selected_model]}`
 License: {caps['license_policy']}
 Max context: {max_ctx}
 Max horizon: {max_hz}
-Quantiles: {len(caps['native_quantiles'])} native""")
+Quantiles: {len(caps['native_quantiles'])} native{exp_str}""")
 
     return ForecastConfigUI(
         horizon=horizon, interval_coverage=interval_coverage,

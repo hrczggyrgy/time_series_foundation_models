@@ -66,10 +66,10 @@ class ForecastingService:
         self.registry = get_registry()
         self.default_runtime = default_runtime or RuntimeConfig()
 
-    def list_models(self, policy: LicensePolicy, acknowledged: set[str] | None = None) -> list[dict[str, Any]]:
+    def list_models(self, policy: LicensePolicy, acknowledged: set[str] | None = None, include_experimental: bool = False) -> list[dict[str, Any]]:
         """List available models with their capabilities."""
         acknowledged = acknowledged or set()
-        entries = self.registry.list_available(policy)
+        entries = self.registry.list_available(policy, include_experimental=include_experimental)
         return [
             {
                 "model_key": e.model_key,

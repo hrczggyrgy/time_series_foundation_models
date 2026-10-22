@@ -121,6 +121,43 @@ class ModelRegistry:
             )
         )
 
+        # TimesFM 3.0 — EXPERIMENTAL (adapter not yet implemented)
+        self.register(
+            ModelRegistryEntry(
+                model_key="timesfm_3",
+                display_name="TimesFM 3.0 (330M) — EXPERIMENTAL",
+                adapter_class="forecasting.adapters.timesfm3.TimesFM3Adapter",
+                capabilities=ModelCapabilities(
+                    model_key="timesfm_3",
+                    display_name="TimesFM 3.0 (330M)",
+                    checkpoint_id="google/timesfm-3.0-pytorch",
+                    checkpoint_revision="main",
+                    supports_cpu=True,
+                    supports_cuda=True,
+                    supports_mps=False,
+                    supports_multivariate=True,
+                    supports_past_covariates=True,
+                    supports_known_future_covariates=True,
+                    native_quantile_levels=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
+                    max_context_length=32768,
+                    min_context_length=32,
+                    max_horizon=1024,
+                    compiles_context_horizon=False,
+                    supports_batch_inference=True,
+                    license_policy=LicensePolicy.RESEARCH,
+                    license_notice=(
+                        "TimesFM Non-Commercial License v1.0: "
+                        "Weights restricted to non-commercial, non-production use only. "
+                        "Commercial/production use requires authorized Google Cloud services (BigQuery ML). "
+                        "Source code is Apache-2.0. ADAPTER NOT YET IMPLEMENTED."
+                    ),
+                    experimental=True,
+                ),
+                license_policy=LicensePolicy.RESEARCH,
+                min_package_version="timesfm[torch]>=3.0.0",
+            )
+        )
+
         # Timestral 209M — Restricted (Modified MIT with $20M revenue cap)
         self.register(
             ModelRegistryEntry(
@@ -388,10 +425,12 @@ class ModelRegistry:
         """Get registry entry by key."""
         return self._entries.get(model_key)
 
-    def list_available(self, policy: LicensePolicy) -> list[ModelRegistryEntry]:
+    def list_available(self, policy: LicensePolicy, include_experimental: bool = False) -> list[ModelRegistryEntry]:
         """List models available under the given policy."""
         available = []
         for entry in self._entries.values():
+            if entry.capabilities.experimental and not include_experimental:
+                continue
             if entry.license_policy == LicensePolicy.PERMISSIVE_ONLY:
                 available.append(entry)
             elif policy == LicensePolicy.RESEARCH:

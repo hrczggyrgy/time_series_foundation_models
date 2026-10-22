@@ -282,6 +282,9 @@ class ModelCapabilities:
     license_policy: Literal["permissive", "restricted"] = "permissive"
     license_notice: str = ""
 
+    # Status
+    experimental: bool = False  # True if adapter is a stub/not yet implemented
+
     def can_handle_request(self, request: ForecastRequest) -> tuple[bool, list[str]]:
         """Check if this adapter can handle a request. Returns (can_handle, reasons_if_not)."""
         reasons = []
