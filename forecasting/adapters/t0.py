@@ -1,0 +1,203 @@
+"""t0-gamma adapter — Apache-2.0 licensed, multivariate + covariates."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from forecasting.adapters.base import BaseAdapter
+from forecasting.contracts import (
+    ForecastRequest,
+    ForecastResult,
+    ModelCapabilities,
+    RuntimeConfig,
+)
+from forecasting.exceptions import ModelLoadError, ModelNotAvailableError
+
+
+class T0GammaAdapter(BaseAdapter):
+    """Adapter for t0-gamma — Apache-2.0 weights, supports multivariate & covariates."""
+
+    @property
+    def capabilities(self) -> ModelCapabilities:
+        return ModelCapabilities(
+            model_key="t0_gamma",
+            display_name="t0-gamma",
+            checkpoint_id="theforecastingcompany/t0-gamma",
+            checkpoint_revision="main",
+            supports_cpu=True,
+            supports_cuda=True,
+            supports_mps=False,  # UNVERIFIED for torch; MLX runtime available separately
+            supports_multivariate=True,
+            supports_past_covariates=True,
+            supports_known_future_covariates=True,
+            supports_group_forecasting=True,
+            native_quantile_levels=(
+                0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
+                0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
+            ),  # 21 quantiles
+            max_context_length=512,
+            min_context_length=1,
+            max_horizon=1024,
+            compiles_context_horizon=False,
+            supports_batch_inference=True,
+            license_policy="permissive",
+            license_notice="Apache-2.0 (weights and code). Requires tfc-t0[torch]>=0.6.0.",
+        )
+
+    def _load_model(self, runtime_config: RuntimeConfig) -> Any:
+        try:
+            import torch
+            from t0 import T0Forecaster
+        except ImportError as e:
+            raise ModelNotAvailableError(
+                self.capabilities.model_key,
+                "tfc-t0[torch]>=0.6.0",
+                details={"import_error": str(e)},
+            ) from e
+
+        device = runtime_config.resolved_device()
+        if device == "cuda" and not torch.cuda.is_available():
+            device = "cpu"
+
+        try:
+            model = T0Forecaster.from_pretrained(
+                self.capabilities.checkpoint_id
+            ).eval()
+            model.to(device)
+        except Exception as e:
+            raise ModelLoadError(
+                self.capabilities.model_key,
+                f"Failed to load checkpoint: {e}",
+                original_error=e,
+            ) from e
+
+        return model
+
+    def _predict_impl(self, request: ForecastRequest, model: Any) -> ForecastResult:
+        import torch
+
+        device = next(model.parameters()).device
+        horizon = request.horizon
+        n_targets = request.n_targets
+        n_history = request.n_history
+
+        # Prepare target history: [batch, context] or [batch, features, context]
+        target_history = self._ensure_2d_targets(request.target_history)  # [targets, history]
+        context_tensor = torch.from_numpy(target_history.astype(np.float32)).to(device)
+
+        # t0 expects [batch, features, context] for multivariate
+        if context_tensor.ndim == 2:
+            context_tensor = context_tensor.unsqueeze(1)  # [targets, 1, history]
+
+        # Prepare covariates if provided
+        past_cov = None
+        if request.past_covariates is not None:
+            pc = request.past_covariates  # [past_features, history]
+            past_cov = torch.from_numpy(pc.astype(np.float32)).to(device)
+            if past_cov.ndim == 2:
+                past_cov = past_cov.unsqueeze(0).repeat(n_targets, 1, 1)  # [targets, past_features, history]
+
+        known_cov_hist = None
+        known_cov_future = None
+        if request.known_covariates_history is not None and request.known_covariates_future is not None:
+            # Concatenate history + future for t0's expected format [context + horizon]
+            kch = request.known_covariates_history  # [known_features, history]
+            kcf = request.known_covariates_future   # [known_features, horizon]
+            known_full = np.concatenate([kch, kcf], axis=1)  # [known_features, context + horizon]
+            known_cov_hist = torch.from_numpy(known_full.astype(np.float32)).to(device)
+            if known_cov_hist.ndim == 2:
+                known_cov_hist = known_cov_hist.unsqueeze(0).repeat(n_targets, 1, 1)
+
+        # Request quantile levels
+        quantile_levels = np.array(request.quantile_levels, dtype=np.float32)
+
+        warnings = []
+
+        with torch.no_grad():
+            out = model.predict(
+                context_tensor,
+                horizon=horizon,
+                quantile_levels=quantile_levels,
+                past_covariates=past_cov,
+                future_covariates=known_cov_hist,
+            )
+
+        # out.quantiles: [batch, horizon, n_quantiles] or [batch, features, horizon, n_quantiles]
+        # out.median: [batch, horizon] or [batch, features, horizon]
+        quantiles = out.quantiles.cpu().numpy()
+        point = out.median.cpu().numpy()
+
+        # Handle shapes
+        if quantiles.ndim == 4:
+            # [batch, features, horizon, quantiles] -> [targets, horizon, quantiles]
+            quantiles = quantiles.transpose(0, 2, 3, 1).reshape(n_targets, horizon, -1)
+            point = point.transpose(0, 2, 1).reshape(n_targets, horizon)
+        elif quantiles.ndim == 3:
+            # [batch, horizon, quantiles] -> [1, horizon, quantiles] for univariate
+            if n_targets == 1:
+                quantiles = quantiles.reshape(1, horizon, -1)
+                point = point.reshape(1, horizon)
+            else:
+                # Multivariate but quantiles missing feature dim - shouldn't happen
+                pass
+
+        # Validate quantile ordering
+        quantiles, q_warnings = self._validate_quantile_ordering(
+            quantiles, quantile_levels
+        )
+        warnings.extend(q_warnings)
+
+        # Interpolate to requested levels if different from native
+        requested_levels = np.array(request.quantile_levels)
+        native_levels = np.array(self.capabilities.native_quantile_levels)
+
+        if not np.array_equal(requested_levels, native_levels):
+            quantiles = self._interpolate_quantiles(quantiles, native_levels, requested_levels)
+            warnings.append(
+                f"Interpolated quantiles from native {len(native_levels)} levels to requested {len(requested_levels)} levels"
+            )
+
+        return self._build_result(
+            point=point,
+            quantiles=quantiles,
+            quantile_levels=requested_levels,
+            request=request,
+            point_definition="median",
+            context_used=min(n_history, self.capabilities.max_context_length or n_history),
+            warnings=warnings,
+            metadata={
+                "device": str(device),
+                "native_quantile_levels": native_levels.tolist(),
+            },
+        )
+
+    def _interpolate_quantiles(
+        self, quantiles: np.ndarray, from_levels: np.ndarray, to_levels: np.ndarray
+    ) -> np.ndarray:
+        """Interpolate quantiles from one set of levels to another."""
+        n_targets, horizon, _ = quantiles.shape
+        result = np.empty((n_targets, horizon, len(to_levels)))
+
+        for t in range(n_targets):
+            for h in range(horizon):
+                q_vals = quantiles[t, h]
+                for i, q in enumerate(to_levels):
+                    if q <= from_levels[0]:
+                        result[t, h, i] = q_vals[0]
+                    elif q >= from_levels[-1]:
+                        result[t, h, i] = q_vals[-1]
+                    else:
+                        idx = np.searchsorted(from_levels, q)
+                        q_low, q_high = from_levels[idx - 1], from_levels[idx]
+                        v_low, v_high = q_vals[idx - 1], q_vals[idx]
+                        weight = (q - q_low) / (q_high - q_low)
+                        result[t, h, i] = v_low + weight * (v_high - v_low)
+
+        return result
+
+
+def create_t0_gamma_adapter() -> T0GammaAdapter:
+    return T0GammaAdapter()
