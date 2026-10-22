@@ -200,6 +200,14 @@ def prepare_dataframe(
     # Drop rows with any NaN in key columns
     data = data.dropna(subset=[date_col] + target_cols).rename(columns={date_col: "ds"})
 
+    # Normalize first target column to 'y' for internal consistency
+    if target_cols:
+        primary_target = target_cols[0]
+        if primary_target != "y":
+            data = data.rename(columns={primary_target: "y"})
+            # Update target_cols list for downstream use
+            target_cols = ["y"] + target_cols[1:]
+
     if data.empty:
         raise ValueError("No valid rows after parsing date and target columns.")
 
@@ -251,24 +259,40 @@ def validate_timeseries(
     prep_info: dict[str, Any],
     min_observations: int = 32,
 ) -> ValidationReport:
-    """Validate prepared time series data."""
+    """Validate prepared time series data.
+
+    Note: target_cols contains original column names. After prepare_dataframe,
+    the first target column is normalized to 'y'. We map original names to actual
+    dataframe column names.
+    """
+
+    # Map original target column names to actual dataframe column names
+    # First target column is normalized to 'y'
+    actual_target_cols = []
+    for i, col in enumerate(target_cols):
+        if i == 0 and "y" in df.columns:
+            actual_target_cols.append("y")
+        elif col in df.columns:
+            actual_target_cols.append(col)
+        else:
+            actual_target_cols.append(col)  # fallback
 
     errors: list[str] = []
     warnings: list[str] = []
     notes: list[str] = []
 
-    for col in target_cols:
+    for orig_col, actual_col in zip(target_cols, actual_target_cols):
         if df["ds"].duplicated().any():
-            errors.append(f"Duplicate timestamps remain after preparation (target: {col}).")
+            errors.append(f"Duplicate timestamps remain after preparation (target: {orig_col}).")
 
-        if df[col].nunique(dropna=True) < 2:
+        if actual_col in df.columns and df[actual_col].nunique(dropna=True) < 2:
             warnings.append(
-                f"Target column '{col}' is constant — forecasting may not be meaningful."
+                f"Target column '{orig_col}' is constant — forecasting may not be meaningful."
             )
 
         if len(df) < min_observations:
             errors.append(
-                f"Need at least {min_observations} observations for '{col}'; found {len(df)}."
+                f"Need at least {min_observations} observations for '{orig_col}'; found {len(df)}."
             )
 
     if prep_info.get("dropped_bad_dates", 0):
@@ -303,10 +327,11 @@ def validate_timeseries(
         )
 
     # Outlier detection per target
-    for col in target_cols:
-        n_out = detect_outliers(df[col])
-        if n_out > 0:
-            warnings.append(f"Target '{col}': detected about {n_out} potential outlier(s).")
+    for orig_col, actual_col in zip(target_cols, actual_target_cols):
+        if actual_col in df.columns:
+            n_out = detect_outliers(df[actual_col])
+            if n_out > 0:
+                warnings.append(f"Target '{orig_col}': detected about {n_out} potential outlier(s).")
 
     if len(df) > 16384:
         notes.append(

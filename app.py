@@ -286,10 +286,12 @@ def profile_timeseries(df: pd.DataFrame, target_cols: list[str]) -> dict[str, An
     """Profile all target columns."""
     profiles = {}
     for col in target_cols:
-        values = df[col].to_numpy(dtype=float)
+        # Use normalized 'y' column if available (after prepare_dataframe normalization)
+        actual_col = "y" if "y" in df.columns and col == target_cols[0] else col
+        values = df[actual_col].to_numpy(dtype=float)
         freq = infer_frequency_safe(df["ds"])
         gaps, gap_share = detect_irregular_gaps(df["ds"])
-        outliers = detect_outliers(df[col])
+        outliers = detect_outliers(df[actual_col])
         ctx_used = min(len(df), MODEL_CONTEXT_LIMIT)
         profiles[col] = {
             "basic_stats": {
@@ -310,7 +312,9 @@ def profile_timeseries(df: pd.DataFrame, target_cols: list[str]) -> dict[str, An
             "stationarity": test_stationarity(values),
             "seasonality": analyze_seasonality(values, freq),
         }
-    return {"targets": profiles, "primary_target": target_cols[0] if target_cols else None}
+    # primary_target is the normalized column name for internal use
+    primary_internal = "y" if "y" in df.columns and target_cols else (target_cols[0] if target_cols else None)
+    return {"targets": profiles, "primary_target": primary_internal}
 
 
 def detect_irregular_gaps(ds: pd.Series) -> tuple[int, float]:
@@ -442,26 +446,23 @@ def plot_rolling_backtest(windows: list[dict[str, Any]], hist_df: pd.DataFrame) 
 def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConfigUI, str]:
     st.sidebar.markdown("## ⚙️ Settings")
 
-    # License policy selector
     service: ForecastingService = st.session_state.service
+
+    # License policy selector
     policy_options = {
         LicensePolicy.PERMISSIVE_ONLY: "Permissive only (Apache-2.0 weights)",
         LicensePolicy.RESEARCH: "Research (includes restricted models)",
     }
-    current_policy = service.registry.get_policy()
     selected_policy = st.sidebar.selectbox(
         "License policy",
         options=list(policy_options.keys()),
         format_func=lambda p: policy_options[p],
-        index=list(policy_options.keys()).index(current_policy),
         help="Permissive: only models with Apache-2.0 weights. Research: includes models with usage restrictions (TimesFM 3.0 non-commercial, Timestral $20M revenue cap).",
     )
-    if selected_policy != current_policy:
-        service.set_policy(selected_policy)
-        st.rerun()
 
     # Model selector
-    models = service.list_models()
+    acknowledged = st.session_state.get("acknowledged_models", set())
+    models = service.list_models(selected_policy, acknowledged)
     model_options = {m["model_key"]: m["display_name"] for m in models}
     model_keys = list(model_options.keys())
 
@@ -531,10 +532,8 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
         caps = model_info
         st.sidebar.caption(f"""Model: `{model_options[selected_model]}`
 License: {caps['license_policy']}
-Multivariate: {'Yes' if caps['supports_multivariate'] else 'No'}
-Covariates: {'Yes' if caps['supports_covariates'] else 'No'}
-Max context: {caps['max_context'] or 'N/A':,}
-Max horizon: {caps['max_horizon'] or 'N/A':,}
+Max context: {caps['max_context']:, if caps['max_context'] else 'N/A'}
+Max horizon: {caps['max_horizon']:, if caps['max_horizon'] else 'N/A'}
 Quantiles: {len(caps['native_quantiles'])} native""")
 
     return ForecastConfigUI(
@@ -588,7 +587,7 @@ def render_tab_data(data_source: str, ui_config: ForecastConfigUI) -> None:
     if prepare_clicked or auto_prepare_clicked:
         with st.spinner("Preparing, validating, and profiling the series…"):
             try:
-                parsed = service.prepare_data(
+                parsed, validation = service.prepare_data(
                     raw_df=raw_df,
                     date_col=date_col,
                     target_cols=target_cols,
@@ -605,7 +604,7 @@ def render_tab_data(data_source: str, ui_config: ForecastConfigUI) -> None:
         st.session_state.target_cols = parsed.target_columns
         st.session_state.past_covariate_cols = parsed.past_covariate_columns
         st.session_state.known_covariate_cols = parsed.known_covariate_columns
-        st.session_state.validation_report = parsed
+        st.session_state.validation_report = validation
         st.session_state.profile_results = profile_timeseries(parsed.df, parsed.target_columns)
         st.session_state.forecast_job = None
         st.session_state.backtest_result = None
@@ -692,7 +691,9 @@ def render_tab_diagnostics() -> None:
 
     with st.expander("Show full historical series"):
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df["ds"], y=df[primary], mode="lines", line=dict(color="#4f46e5", width=1.6), name="Series"))
+        # Use normalized 'y' column for plotting
+        plot_col = "y" if "y" in df.columns else primary
+        fig.add_trace(go.Scatter(x=df["ds"], y=df[plot_col], mode="lines", line=dict(color="#4f46e5", width=1.6), name="Series"))
         fig = style_figure(fig, "Historical series", 300, "Value")
         fig.update_xaxes(title="Date")
         st.plotly_chart(fig, use_container_width=True)
@@ -742,6 +743,10 @@ def render_tab_forecast(ui_config: ForecastConfigUI) -> None:
                     compile=ui_config.use_full_context,  # Use compile as proxy for full context
                 )
 
+                # Get session policy and acknowledgments
+                policy = ui_config.license_policy
+                acknowledged = st.session_state.get("acknowledged_models", set())
+
                 # Run forecast with backtest if enabled
                 if ui_config.backtest_mode:
                     job = service.run_forecast_with_backtest(
@@ -752,6 +757,8 @@ def render_tab_forecast(ui_config: ForecastConfigUI) -> None:
                         runtime_config=runtime,
                         business_days_only=ui_config.business_days_only,
                         quantile_levels=DEFAULT_QUANTILE_LEVELS,
+                        policy=policy,
+                        acknowledged=acknowledged,
                     )
                     st.session_state.forecast_job = job
                     st.session_state.backtest_result = job.backtest
@@ -763,6 +770,8 @@ def render_tab_forecast(ui_config: ForecastConfigUI) -> None:
                         runtime_config=runtime,
                         business_days_only=ui_config.business_days_only,
                         quantile_levels=DEFAULT_QUANTILE_LEVELS,
+                        policy=policy,
+                        acknowledged=acknowledged,
                     )
                     st.session_state.forecast_job = job
                     st.session_state.backtest_result = None

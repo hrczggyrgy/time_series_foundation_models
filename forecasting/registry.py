@@ -36,13 +36,15 @@ class ModelRegistryEntry:
 
 
 class ModelRegistry:
-    """Central registry of all available model adapters."""
+    """Central registry of all available model adapters.
 
-    def __init__(self, policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY):
-        self._policy = policy
+    Policy and acknowledgments are passed per-call to support session-specific
+    access control while sharing the model cache globally.
+    """
+
+    def __init__(self):
         self._entries: dict[str, ModelRegistryEntry] = {}
         self._instances: dict[str, ForecastAdapter] = {}
-        self._acknowledged: set[str] = set()  # Model keys user has acknowledged
 
         # Register built-in models
         self._register_builtin()
@@ -201,6 +203,88 @@ class ModelRegistry:
             )
         )
 
+        # Timestral 123M — Restricted (Modified MIT with $20M revenue cap)
+        self.register(
+            ModelRegistryEntry(
+                model_key="timestral_123m",
+                display_name="Timestral 123M — Restricted License",
+                adapter_class="forecasting.adapters.timestral.TimestralAdapter",
+                capabilities=ModelCapabilities(
+                    model_key="timestral_123m",
+                    display_name="Timestral 123M",
+                    checkpoint_id="mistralai/Timestral-123M",
+                    checkpoint_revision="main",
+                    supports_cpu=True,
+                    supports_cuda=True,
+                    supports_mps=False,  # UNVERIFIED
+                    supports_multivariate=True,
+                    supports_past_covariates=True,
+                    supports_known_future_covariates=True,
+                    native_quantile_levels=(
+                        0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
+                        0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
+                    ),
+                    max_context_length=32768,
+                    min_context_length=1,
+                    max_horizon=1024,
+                    compiles_context_horizon=False,
+                    supports_batch_inference=True,
+                    license_policy=LicensePolicy.RESEARCH,
+                    license_notice=(
+                        "Modified MIT License with revenue restriction: "
+                        "You are not authorized to use this model if your company's (or employer's) "
+                        "global consolidated monthly revenue exceeds $20 million. "
+                        "This applies to the model, derivatives, modifications, and combined works. "
+                        "Contact sales@mistral.ai for commercial license. "
+                        "Inference code is Apache-2.0."
+                    ),
+                ),
+                license_policy=LicensePolicy.RESEARCH,
+                min_package_version="timestral>=0.1.0",
+            )
+        )
+
+        # Timestral 5M — Restricted (Modified MIT with $20M revenue cap)
+        self.register(
+            ModelRegistryEntry(
+                model_key="timestral_5m",
+                display_name="Timestral 5M — Restricted License",
+                adapter_class="forecasting.adapters.timestral.TimestralAdapter",
+                capabilities=ModelCapabilities(
+                    model_key="timestral_5m",
+                    display_name="Timestral 5M",
+                    checkpoint_id="mistralai/Timestral-5M",
+                    checkpoint_revision="main",
+                    supports_cpu=True,
+                    supports_cuda=True,
+                    supports_mps=False,  # UNVERIFIED
+                    supports_multivariate=True,
+                    supports_past_covariates=True,
+                    supports_known_future_covariates=True,
+                    native_quantile_levels=(
+                        0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
+                        0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
+                    ),
+                    max_context_length=32768,
+                    min_context_length=1,
+                    max_horizon=1024,
+                    compiles_context_horizon=False,
+                    supports_batch_inference=True,
+                    license_policy=LicensePolicy.RESEARCH,
+                    license_notice=(
+                        "Modified MIT License with revenue restriction: "
+                        "You are not authorized to use this model if your company's (or employer's) "
+                        "global consolidated monthly revenue exceeds $20 million. "
+                        "This applies to the model, derivatives, modifications, and combined works. "
+                        "Contact sales@mistral.ai for commercial license. "
+                        "Inference code is Apache-2.0."
+                    ),
+                ),
+                license_policy=LicensePolicy.RESEARCH,
+                min_package_version="timestral>=0.1.0",
+            )
+        )
+
         # t0-gamma — Permissive (Apache-2.0)
         self.register(
             ModelRegistryEntry(
@@ -300,27 +384,12 @@ class ModelRegistry:
         """Register a model adapter entry."""
         self._entries[entry.model_key] = entry
 
-    def set_policy(self, policy: LicensePolicy) -> None:
-        """Change the license policy."""
-        self._policy = policy
-
-    def get_policy(self) -> LicensePolicy:
-        return self._policy
-
-    def acknowledge(self, model_key: str) -> None:
-        """Record user acknowledgment for a restricted model."""
-        self._acknowledged.add(model_key)
-
-    def is_acknowledged(self, model_key: str) -> bool:
-        return model_key in self._acknowledged
-
     def get_entry(self, model_key: str) -> ModelRegistryEntry | None:
         """Get registry entry by key."""
         return self._entries.get(model_key)
 
-    def list_available(self, policy: LicensePolicy | None = None) -> list[ModelRegistryEntry]:
-        """List models available under the given (or current) policy."""
-        policy = policy or self._policy
+    def list_available(self, policy: LicensePolicy) -> list[ModelRegistryEntry]:
+        """List models available under the given policy."""
         available = []
         for entry in self._entries.values():
             if entry.license_policy == LicensePolicy.PERMISSIVE_ONLY:
@@ -329,18 +398,32 @@ class ModelRegistry:
                 available.append(entry)
         return available
 
-    def get_adapter(self, model_key: str, runtime_config: RuntimeConfig) -> ForecastAdapter:
-        """Get or create adapter instance for a model."""
+    def get_adapter(
+        self,
+        model_key: str,
+        runtime_config: RuntimeConfig,
+        policy: LicensePolicy,
+        acknowledged: set[str] | None = None,
+    ) -> ForecastAdapter:
+        """Get or create adapter instance for a model.
+
+        Args:
+            model_key: Model identifier
+            runtime_config: Runtime configuration
+            policy: License policy for this session
+            acknowledged: Set of model keys acknowledged by the user in this session
+        """
+        acknowledged = acknowledged or set()
         entry = self._entries.get(model_key)
         if not entry:
             raise ModelNotAvailableError(model_key, "unknown model key")
 
         # Check license policy
-        if entry.license_policy == LicensePolicy.RESEARCH and self._policy != LicensePolicy.RESEARCH:
-            raise LicensePolicyError(model_key, self._policy.value)
+        if entry.license_policy == LicensePolicy.RESEARCH and policy != LicensePolicy.RESEARCH:
+            raise LicensePolicyError(model_key, policy.value)
 
         # Check acknowledgment for restricted models
-        if entry.license_policy == LicensePolicy.RESEARCH and not self.is_acknowledged(model_key):
+        if entry.license_policy == LicensePolicy.RESEARCH and model_key not in acknowledged:
             raise LicenseAcknowledgmentRequiredError(model_key, entry.capabilities.license_notice)
 
         # Create runtime config with model_key for adapters that need it (e.g., Timestral)
@@ -414,17 +497,15 @@ class ModelRegistry:
         self._instances.clear()
 
 
-# Global registry instance
+# Global registry instance (for model caching only)
 _registry: ModelRegistry | None = None
 
 
-def get_registry(policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY) -> ModelRegistry:
-    """Get or create the global model registry."""
+def get_registry() -> ModelRegistry:
+    """Get or create the global model registry (shared model cache, no policy)."""
     global _registry
     if _registry is None:
-        _registry = ModelRegistry(policy)
-    elif _registry.get_policy() != policy:
-        _registry.set_policy(policy)
+        _registry = ModelRegistry()
     return _registry
 
 

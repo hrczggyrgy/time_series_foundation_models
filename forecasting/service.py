@@ -37,7 +37,7 @@ from forecasting.reporting.exports import (
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class ForecastJob:
     """Complete forecast job result."""
 
@@ -49,27 +49,26 @@ class ForecastJob:
     timing: dict[str, float] = field(default_factory=dict)
     data_fingerprint: str = ""
     preprocessing_info: dict[str, Any] = field(default_factory=dict)
+    # For UI display compatibility
+    forecast_df: pd.DataFrame | None = None
 
 
 class ForecastingService:
-    """Main service for running forecasts and backtests."""
+    """Main service for running forecasts and backtests.
+
+    Policy and acknowledgments are passed per-call for session isolation.
+    """
 
     def __init__(
         self,
-        policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
         default_runtime: RuntimeConfig | None = None,
     ):
-        self.registry = get_registry(policy)
+        self.registry = get_registry()
         self.default_runtime = default_runtime or RuntimeConfig()
 
-    def set_policy(self, policy: LicensePolicy) -> None:
-        self.registry.set_policy(policy)
-
-    def acknowledge_model(self, model_key: str) -> None:
-        self.registry.acknowledge(model_key)
-
-    def list_models(self, policy: LicensePolicy | None = None) -> list[dict[str, Any]]:
+    def list_models(self, policy: LicensePolicy, acknowledged: set[str] | None = None) -> list[dict[str, Any]]:
         """List available models with their capabilities."""
+        acknowledged = acknowledged or set()
         entries = self.registry.list_available(policy)
         return [
             {
@@ -82,10 +81,14 @@ class ForecastingService:
                 "max_context": e.capabilities.max_context_length,
                 "max_horizon": e.capabilities.max_horizon,
                 "native_quantiles": list(e.capabilities.native_quantile_levels),
-                "is_acknowledged": self.registry.is_acknowledged(e.model_key),
+                "is_acknowledged": e.model_key in acknowledged,
             }
             for e in entries
         ]
+
+    def get_adapter(self, model_key: str, runtime_config: RuntimeConfig, policy: LicensePolicy, acknowledged: set[str] | None = None):
+        """Get adapter for a model with session-specific policy/acknowledgment."""
+        return self.registry.get_adapter(model_key, runtime_config, policy, acknowledged)
 
     def prepare_data(
         self,
@@ -96,8 +99,8 @@ class ForecastingService:
         known_covariate_cols: list[str] | None = None,
         auto_fix: bool = True,
         aggregation: str = "mean",
-    ) -> ParsedData:
-        """Prepare and validate data."""
+    ) -> tuple[ParsedData, ValidationReport]:
+        """Prepare and validate data. Returns (ParsedData, ValidationReport)."""
         # Compute fingerprint for cache invalidation
         raw_bytes = raw_df.to_csv(index=False).encode()
         fingerprint = hashlib.md5(raw_bytes).hexdigest()[:16]
@@ -114,7 +117,7 @@ class ForecastingService:
 
         validation = validate_timeseries(prepared, target_cols, prep_info)
 
-        return ParsedData(
+        parsed = ParsedData(
             df=prepared,
             date_column=date_col,
             target_columns=target_cols,
@@ -123,12 +126,15 @@ class ForecastingService:
             prep_report=prep_info,
             raw_signature=fingerprint,
         )
+        return parsed, validation
 
     def run_forecast(
         self,
         model_key: str,
         parsed_data: ParsedData,
         horizon: int,
+        policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
+        acknowledged: set[str] | None = None,
         runtime_config: RuntimeConfig | None = None,
         business_days_only: bool = False,
         quantile_levels: tuple[float, ...] = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
@@ -140,13 +146,24 @@ class ForecastingService:
 
         # Get adapter
         runtime = runtime_config or self.default_runtime
-        adapter = self.registry.get_adapter(model_key, runtime)
+        adapter = self.registry.get_adapter(model_key, runtime, policy, acknowledged)
         load_time = time.time()
         timing["model_load_sec"] = load_time - start_time
 
         # Build request
         df = parsed_data.df
-        target_history = df[parsed_data.target_columns].T.values  # [targets, history]
+        # Map original target column names to actual dataframe column names
+        # First target is normalized to 'y'
+        actual_target_columns = []
+        for i, col in enumerate(parsed_data.target_columns):
+            if i == 0 and "y" in df.columns:
+                actual_target_columns.append("y")
+            elif col in df.columns:
+                actual_target_columns.append(col)
+            else:
+                actual_target_columns.append(col)
+
+        target_history = df[actual_target_columns].T.values  # [targets, history]
         history_index = df["ds"]
 
         freq = infer_frequency_safe(history_index)
@@ -213,10 +230,12 @@ class ForecastingService:
         expanding_window: bool = True,
         runtime_config: RuntimeConfig | None = None,
         quantile_levels: tuple[float, ...] = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
+        policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
+        acknowledged: set[str] | None = None,
     ) -> BacktestResult:
         """Run rolling-origin backtest."""
         runtime = runtime_config or self.default_runtime
-        adapter = self.registry.get_adapter(model_key, runtime)
+        adapter = self.registry.get_adapter(model_key, runtime, policy, acknowledged)
 
         df = parsed_data.df
         target_history = df[parsed_data.target_columns].T.values
@@ -259,6 +278,8 @@ class ForecastingService:
         runtime_config: RuntimeConfig | None = None,
         business_days_only: bool = False,
         quantile_levels: tuple[float, ...] = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
+        policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
+        acknowledged: set[str] | None = None,
     ) -> ForecastJob:
         """Run forecast and backtest in one call."""
         # Run forecast (uses all data)
@@ -269,6 +290,8 @@ class ForecastingService:
             runtime_config=runtime_config,
             business_days_only=business_days_only,
             quantile_levels=quantile_levels,
+            policy=policy,
+            acknowledged=acknowledged,
         )
 
         # Run backtest (uses rolling windows)
@@ -281,6 +304,8 @@ class ForecastingService:
                 n_windows=n_windows,
                 runtime_config=runtime_config,
                 quantile_levels=quantile_levels,
+                policy=policy,
+                acknowledged=acknowledged,
             )
             job.backtest = backtest
             job.timing["backtest_sec"] = time.time() - bt_start

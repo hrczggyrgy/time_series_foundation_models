@@ -173,13 +173,17 @@ def compute_interval_metrics(
 def compute_crps(actuals: np.ndarray, quantiles: np.ndarray, quantile_levels: np.ndarray) -> float:
     """Compute CRPS via numerical integration over quantile levels.
 
-    Uses the identity: CRPS = 2 * integral_0^1 (q - 1_{y <= q}) * (F^{-1}(q) - y) dq
+    Uses the identity: CRPS = 2 * ∫_0^1 (τ - 1_{y ≤ q_τ}) * (q_τ - y) dτ
     Approximated via trapezoidal rule over provided quantile levels.
+
+    Note: This integrates only over the provided quantile levels (typically 0.1-0.9).
+    The tails (0 to q_min and q_max to 1) are not included unless quantile_levels
+    explicitly covers them. For standard decile forecasts, this is an approximation.
 
     Args:
         actuals: Ground truth [horizon] or [targets, horizon]
         quantiles: Quantile forecasts [horizon, n_levels] or [targets, horizon, n_levels]
-        quantile_levels: Probability levels for quantiles [n_levels]
+        quantile_levels: Probability levels for quantiles [n_levels] (must be strictly increasing)
 
     Returns:
         Mean CRPS across all valid forecast points.
@@ -190,6 +194,8 @@ def compute_crps(actuals: np.ndarray, quantiles: np.ndarray, quantile_levels: np
 
     if quantile_levels.ndim != 1 or quantile_levels.size < 2:
         return math.nan
+    if not np.all(np.diff(quantile_levels) > 0):
+        return math.nan  # Quantile levels must be strictly increasing
 
     # Ensure 3D: [targets, horizon, n_levels]
     if quantiles.ndim == 2:
@@ -215,11 +221,13 @@ def compute_crps(actuals: np.ndarray, quantiles: np.ndarray, quantile_levels: np
                 continue
 
             # Pinball loss at each quantile level
-            pinball = np.where(q_vals - y >= 0,
-                             quantile_levels * (q_vals - y),
-                             (quantile_levels - 1) * (q_vals - y))
+            # Standard formula: if y >= q_τ: τ * (y - q_τ), else: (τ - 1) * (y - q_τ)
+            diff = y - q_vals
+            pinball = np.where(diff >= 0,
+                             quantile_levels * diff,
+                             (quantile_levels - 1) * diff)
 
-            # CRPS = 2 * integral of pinball loss over q in [0,1]
+            # CRPS = 2 * integral of pinball loss over τ in [0,1]
             # Trapezoidal rule
             crps_val = 2 * np.trapz(pinball, quantile_levels)
             crps_values.append(crps_val)
