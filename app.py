@@ -445,7 +445,7 @@ def plot_rolling_backtest(windows: list[dict[str, Any]], hist_df: pd.DataFrame) 
     return style_figure(fig, "Rolling backtest", 420, "Value")
 
 
-def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConfigUI, str]:
+def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConfigUI, str, list[str]]:
     st.sidebar.markdown("## ⚙️ Settings")
 
     service: ForecastingService = st.session_state.service
@@ -457,11 +457,17 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
 
     # Multi-model selector for comparison
     default_models = ["timesfm_2_5"] if "timesfm_2_5" in model_keys else [model_keys[0]]
+    # Filter session state to only include currently available models
+    stored_models = st.session_state.get("selected_models", default_models)
+    stored_models = [m for m in stored_models if m in model_keys]
+    if not stored_models:
+        stored_models = default_models
+
     selected_models = st.sidebar.multiselect(
         "Models to compare",
         options=model_keys,
         format_func=lambda k: model_options[k],
-        default=st.session_state.get("selected_models", default_models),
+        default=stored_models,
         help="Select one or more models to run and compare. Experimental models are hidden by default.",
     )
 
