@@ -119,6 +119,7 @@ def run_backtest(
     known_covariates_history: np.ndarray | None = None,
     known_covariates_future: np.ndarray | None = None,
     quantile_levels: tuple[float, ...] = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
+    observation_mask: np.ndarray | None = None,  # Boolean mask: True for original observations
 ) -> BacktestResult:
     """Run rolling-origin backtest with leakage-free splits.
 
@@ -127,7 +128,12 @@ def run_backtest(
     2. Fit any data-dependent preprocessing on training data ONLY
     3. Generate forecast for horizon
     4. Align with held-out actuals
-    5. Score only observed targets
+    5. Score only observed targets (using observation_mask if provided)
+
+    Note: The observation_mask helps identify which points were imputed vs original.
+    However, truly leakage-free backtesting would require re-running preprocessing
+    at each forecast origin using only available training data. The current
+    implementation uses the preprocessed data but filters evaluation to observed points.
     """
     # Ensure 2D target_history
     if target_history.ndim == 1:
@@ -174,6 +180,17 @@ def run_backtest(
         train_past_cov = past_covariates[:, :train_end] if past_covariates is not None else None
         train_known_hist = known_covariates_history[:, :train_end] if known_covariates_history is not None else None
         test_known_future = known_covariates_future if known_covariates_future is not None else None
+
+        # Filter test actuals to only observed (non-imputed) points if mask provided
+        if observation_mask is not None:
+            test_mask = observation_mask[train_end:test_end]
+            # Only evaluate on original observations
+            if not test_mask.all():
+                # Mark imputed points as NaN so they're excluded from metrics
+                test_actuals_filtered = test_actuals.copy()
+                for t in range(test_actuals.shape[0]):
+                    test_actuals_filtered[t, ~test_mask] = np.nan
+                test_actuals = test_actuals_filtered
 
         # Build request
         request = ForecastRequest(
