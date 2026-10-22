@@ -217,6 +217,31 @@ class ForecastingService:
             preprocessing_info=parsed_data.prep_report,
         )
 
+        # Build forecast DataFrame for UI display
+        point_vals = result.point[0] if result.point.ndim == 2 else result.point
+        if result.has_probabilistic():
+            interval_bounds = result.get_interval(0.8)  # 80% default
+            if interval_bounds:
+                lower, upper = interval_bounds
+                lower_vals = lower[0] if lower.ndim == 2 else lower
+                upper_vals = upper[0] if upper.ndim == 2 else upper
+                job.forecast_df = pd.DataFrame({
+                    "Date": future_dates,
+                    "Forecast": point_vals,
+                    "Lower_80": lower_vals,
+                    "Upper_80": upper_vals,
+                })
+            else:
+                job.forecast_df = pd.DataFrame({
+                    "Date": future_dates,
+                    "Forecast": point_vals,
+                })
+        else:
+            job.forecast_df = pd.DataFrame({
+                "Date": future_dates,
+                "Forecast": point_vals,
+            })
+
         total_time = time.time()
         timing["total_sec"] = total_time - start_time
 
