@@ -1,5 +1,5 @@
 # Core UI & data
-streamlit>=1.29.0,<2.0
+streamlit>=1.40.0,<2.0
 pandas>=2.0.0,<3.0
 numpy>=2.0.0,<3.0
 
