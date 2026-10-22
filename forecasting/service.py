@@ -536,9 +536,13 @@ class ForecastingService:
                         quantile_levels=first_window.quantile_levels,
                         model_key=model_key,
                         checkpoint_id=adapter.capabilities.checkpoint_id,
+                        checkpoint_revision=adapter.capabilities.checkpoint_revision,
                         context_used=first_window.context_used,
                         warnings=[],
                         metadata={},
+                        point_definition="median",
+                        target_names=tuple(parsed_data.target_columns),
+                        future_index=history_index[splits[0][0]:splits[0][0] + horizon],
                     )
                 else:
                     forecast_result = None
@@ -608,7 +612,7 @@ class ForecastingService:
                 "expanding_window": expanding_window,
                 "quantile_levels": quantile_levels,
                 "business_days_only": business_days_only,
-                "policy": policy.value,
+                "policy": policy.value if hasattr(policy, 'value') else policy,
             },
             data_fingerprint=parsed_data.raw_signature,
             timestamp=datetime.utcnow().isoformat(),
