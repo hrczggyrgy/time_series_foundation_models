@@ -9,6 +9,10 @@ pinned: false
 
 # 📈 TimesFM 2.5 Forecasting Dashboard
 
+[![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/hrczggyrgy/TSFMs_forecasting)
+
+**Live demo:** [https://huggingface.co/spaces/hrczggyrgy/TSFMs_forecasting](https://huggingface.co/spaces/hrczggyrgy/TSFMs_forecasting)
+
 Zero-shot univariate time-series forecasting powered by [Google TimesFM 2.5](https://huggingface.co/google/timesfm-2.5-200m-pytorch) (200M parameters).
 
 ## Features
@@ -78,4 +82,5 @@ Apache 2.0 (TimesFM model from Google Research)
 
 - [TimesFM GitHub](https://github.com/google-research/timesfm)
 - [HuggingFace Model Card](https://huggingface.co/google/timesfm-2.5-200m-pytorch)
+- [HuggingFace Space (Live Demo)](https://huggingface.co/spaces/hrczggyrgy/TSFMs_forecasting)
 - [Streamlit Docs](https://docs.streamlit.io/)
