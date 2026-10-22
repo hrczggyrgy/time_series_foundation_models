@@ -3,10 +3,8 @@ title: "Multi-Model Time-Series Forecasting Workbench"
 emoji: "📊"
 colorFrom: "blue"
 colorTo: "indigo"
-sdk: "streamlit"
-sdk_version: "1.40.0"
-python_version: "3.10"
-app_file: "app.py"
+sdk: "docker"
+app_port: 7860
 pinned: false
 ---
 
