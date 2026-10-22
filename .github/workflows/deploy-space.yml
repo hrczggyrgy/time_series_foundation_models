@@ -1,0 +1,29 @@
+name: Deploy to Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # lets the job request an OIDC token
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the hf CLI
+        run: |
+          curl -LsSf https://hf.co/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Upload to Space
+        env:
+          HF_OIDC_RESOURCE: spaces/hrczggyorgy/TSFMs_forecasting
+        run: >
+          hf upload hrczggyrgy/TSFMs_forecasting . .
+          --repo-type space
+          --exclude ".git/*" ".github/*" "tests/*" "venv/*" "__pycache__/*" "*.pyc" ".pytest_cache/*" ".mypy_cache/*" "*.csv" "docs/*" "ui/*" ".streamlit/*" ".HF_TOKEN"
+          --commit-message "Deploy ${GITHUB_SHA::7}"
