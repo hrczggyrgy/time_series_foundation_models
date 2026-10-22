@@ -1053,7 +1053,11 @@ def main() -> None:
     all_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=False)
     model_keys = [m["model_key"] for m in all_models]
     default_models = ["timesfm_2_5"] if "timesfm_2_5" in model_keys else [model_keys[0]]
-    selected_models = st.session_state.get("selected_models", default_models)
+    # Filter session state to only include currently available models
+    stored_models = st.session_state.get("selected_models", default_models)
+    selected_models = [m for m in stored_models if m in model_keys]
+    if not selected_models:
+        selected_models = default_models
 
     st.markdown('<div class="small-note"><span class="step-chip">1 Data</span><span class="step-chip">2 Diagnostics</span><span class="step-chip">3 Forecast</span><span class="step-chip">4 Evaluation</span><span class="step-chip">5 Comparison</span></div>', unsafe_allow_html=True)
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Data", "Diagnostics", "Forecast", "Evaluation", "Comparison"])
