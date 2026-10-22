@@ -450,8 +450,8 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
 
     service: ForecastingService = st.session_state.service
 
-    # Get all available models (all models enabled by default)
-    all_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=True)
+    # Get all available models (exclude experimental by default)
+    all_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=False)
     model_options = {m["model_key"]: m["display_name"] for m in all_models}
     model_keys = list(model_options.keys())
 
@@ -462,7 +462,7 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
         options=model_keys,
         format_func=lambda k: model_options[k],
         default=st.session_state.get("selected_models", default_models),
-        help="Select one or more models to run and compare. All models are available.",
+        help="Select one or more models to run and compare. Experimental models are hidden by default.",
     )
 
     if not selected_models:
@@ -854,7 +854,7 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
     st.caption(f"Horizon: {meta['horizon']} · Interval: {interval_label} · Models: {', '.join(selected_models)}")
 
 
-def render_tab_evaluation(ui_config: ForecastConfigUI) -> None:
+def render_tab_evaluation(ui_config: ForecastConfigUI, selected_models: list[str]) -> None:
     st.markdown("### 4. Evaluation")
     job = st.session_state.forecast_job
     meta = st.session_state.run_metadata
@@ -1050,7 +1050,7 @@ def main() -> None:
 
     # Get selected models from sidebar
     service: ForecastingService = st.session_state.service
-    all_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=True)
+    all_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=False)
     model_keys = [m["model_key"] for m in all_models]
     default_models = ["timesfm_2_5"] if "timesfm_2_5" in model_keys else [model_keys[0]]
     selected_models = st.session_state.get("selected_models", default_models)
