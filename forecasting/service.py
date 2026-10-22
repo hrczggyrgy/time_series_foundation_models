@@ -167,7 +167,7 @@ class ForecastingService:
         history_index = df["ds"]
 
         # Truncate history to model's max context length if needed
-        max_ctx = adapter.capabilities().max_context_length
+        max_ctx = adapter.capabilities.max_context_length
         if max_ctx is not None and len(history_index) > max_ctx:
             target_history = target_history[:, -max_ctx:]
             history_index = history_index[-max_ctx:]
