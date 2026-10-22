@@ -166,6 +166,12 @@ class ForecastingService:
         target_history = df[actual_target_columns].T.values  # [targets, history]
         history_index = df["ds"]
 
+        # Truncate history to model's max context length if needed
+        max_ctx = adapter.capabilities().max_context_length
+        if max_ctx is not None and len(history_index) > max_ctx:
+            target_history = target_history[:, -max_ctx:]
+            history_index = history_index[-max_ctx:]
+
         freq = infer_frequency_safe(history_index)
         raw_freq = parsed_data.prep_report.get("raw_frequency")
         future_dates = build_future_dates(
