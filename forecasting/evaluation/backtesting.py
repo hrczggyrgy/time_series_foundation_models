@@ -172,6 +172,13 @@ def run_backtest(
         train_history = target_history[:, :train_end]
         train_index = history_index[:train_end]
 
+        # Truncate training context to model's max context limit if specified
+        max_ctx = adapter.capabilities.max_context_length if hasattr(adapter, 'capabilities') else None
+        if max_ctx and train_history.shape[1] > max_ctx:
+            # Use the most recent max_ctx points
+            train_history = train_history[:, -max_ctx:]
+            train_index = train_index[-max_ctx:]
+
         # Test data
         test_actuals = target_history[:, train_end:test_end]
         test_dates = history_index[train_end:test_end]
@@ -180,6 +187,13 @@ def run_backtest(
         train_past_cov = past_covariates[:, :train_end] if past_covariates is not None else None
         train_known_hist = known_covariates_history[:, :train_end] if known_covariates_history is not None else None
         test_known_future = known_covariates_future if known_covariates_future is not None else None
+
+        # Truncate covariates to match truncated training history
+        if max_ctx and train_history.shape[1] < train_end:
+            if train_past_cov is not None:
+                train_past_cov = train_past_cov[:, -max_ctx:]
+            if train_known_hist is not None:
+                train_known_hist = train_known_hist[:, -max_ctx:]
 
         # Filter test actuals to only observed (non-imputed) points if mask provided
         if observation_mask is not None:

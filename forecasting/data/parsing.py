@@ -230,6 +230,10 @@ def prepare_dataframe(
     freq_before = infer_frequency_safe(data["ds"])
     # Store raw frequency for date generation (preserves MS/ME, QS/QE, etc.)
     raw_freq = pd.infer_freq(pd.DatetimeIndex(data["ds"]))
+
+    # Track original timestamps for observation mask
+    original_timestamps = set(data["ds"].tolist())
+
     if auto_fix and freq_before == "Irregular":
         rule = dominant_resample_rule(data["ds"])
         if rule:
@@ -264,23 +268,12 @@ def prepare_dataframe(
     prep_info["raw_frequency"] = raw_freq
 
     # Track observation mask: True for original observations, False for imputed
-    # Start with all True (original), then mark imputed points
-    observation_mask = pd.Series([True] * len(data), index=data.index)
+    # Mark based on whether timestamp existed in original data
+    observation_mask = data["ds"].isin(original_timestamps)
 
-    # Mark resampled points as imputed (if resampling occurred)
-    if prep_info.get("auto_resampled_to"):
-        # Resampling creates new rows - mark as imputed
-        original_len = prep_info.get("original_length", len(data))
-        if len(data) > original_len:
-            observation_mask.iloc[original_len:] = False
-
-    # Mark filled missing points as imputed
-    if prep_info.get("filled_missing_points", 0) > 0:
-        # After interpolation, we can't easily identify exactly which were filled
-        # For now, mark any row that had NaN in targets before filling
-        # This is conservative - may over-mark, but prevents leakage
-        # A more precise implementation would track before/after
-        pass
+    # Note: This is still a partial fix. For truly leakage-free backtesting,
+    # preprocessing should be re-run at each forecast origin using only training data.
+    # The current implementation at least identifies which timestamps are original vs resampled.
 
     return data, prep_info, observation_mask
 

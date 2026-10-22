@@ -271,6 +271,9 @@ class ModelCapabilities:
     max_horizon: int | None = None
     compiles_context_horizon: bool = False  # Whether model compiles for specific (ctx, horizon)
 
+    # Status
+    experimental: bool = False  # If True, adapter not yet fully implemented
+
     # Data handling
     supports_missing_values: bool = False
     missing_value_policy: Literal["error", "interpolate", "drop"] = "error"

@@ -2,6 +2,131 @@
 
 This document summarizes the critical fixes implemented in response to the code review dated October 22, 2026.
 
+## Multi-Model Comparison Feature - October 22, 2026
+
+This section documents the implementation of the multi-model comparison feature and additional fixes from the second code review.
+
+### P1 - Critical Fixes for Comparison
+
+#### 1. Backtest Context Limit Handling
+**Issue**: Backtests could fail on histories longer than a model's context limit, even though the adapter could use a permitted recent context window.
+
+**Fix**:
+- Modified `run_backtest()` to truncate training context to model's `max_context_length` in each window
+- Uses the most recent `max_context_length` points when training history exceeds limit
+- Truncates covariates to match truncated training history
+- Context used is reported in backtest results for transparency
+
+**Files**: `forecasting/evaluation/backtesting.py`
+
+#### 2. Observation Mask Accuracy
+**Issue**: Observation mask marked resampled points incorrectly - newly created timestamps could appear throughout a resampled series, not just at the end.
+
+**Fix**:
+- Changed observation mask to track original timestamps by checking if timestamp existed in original data
+- Uses `data["ds"].isin(original_timestamps)` to accurately identify original vs resampled points
+- More reliable for model rankings since test labels are more accurate
+
+**Files**: `forecasting/data/parsing.py`
+
+#### 3. TimesFM 2.5 Quantile Fabrication
+**Issue**: When quantile output was `None`, adapter repeated point forecast across nine quantile columns, creating degenerate intervals.
+
+**Fix**:
+- Removed fallback that fabricated quantiles by repeating point forecast
+- Now raises explicit `ValueError` when model does not return quantile forecasts
+- Users get clear error message instead of misleading probabilistic output
+
+**Files**: `forecasting/adapters/timesfm25.py`
+
+### P2 - Important Fixes for Comparison
+
+#### 4. Registry Capabilities Alignment
+**Issue**: Registry advertised multivariate and covariate support for Timestral variants, while adapter reported those as unsupported. TimesFM 3.0 was registered twice.
+
+**Fix**:
+- Updated registry capabilities to match actual adapter implementations
+- Timestral variants now marked as `supports_multivariate=False`, `supports_past_covariates=False`, `supports_known_future_covariates=False`
+- Removed duplicate TimesFM 3.0 registration, kept single experimental entry
+- Added `experimental` field to `ModelRegistryEntry` and `ModelCapabilities`
+- T0-Gamma covariate support marked as `False` until context+horizon alignment is implemented
+
+**Files**: `forecasting/registry.py`, `forecasting/contracts.py`
+
+#### 5. Memory Management for Comparison
+**Issue**: Loading multiple foundation models for comparison could exhaust memory.
+
+**Fix**:
+- Added `_release_adapter()` method to release adapters from cache after use
+- `compare_models()` releases each adapter after its forecast completes
+- Sequential model loading to avoid concurrent memory usage
+
+**Files**: `forecasting/service.py`
+
+### Multi-Model Comparison Implementation
+
+#### Step 1: Comparison Result Types
+**Files**: `forecasting/comparison.py`
+- `ModelComparisonItem`: Result for single model (forecast, backtest, error, timing, context used, warnings)
+- `ComparisonReport`: Complete comparison with model results, settings, evaluation origins, timestamp
+
+#### Step 2: `ForecastingService.compare_models()`
+**Files**: `forecasting/service.py`
+- Accepts list of model keys, shared parsed data, horizon, backtest settings
+- Generates shared evaluation splits (same for all models)
+- Runs each model sequentially with progress callback support
+- Records success/failure separately for each model
+- Releases adapter memory after each model completes
+- Returns `ComparisonReport` with all results
+
+#### Step 3: Fair Comparison Protocol
+- Uses same target series, timestamps, forecast horizon for all models
+- Uses same training cutoff dates and held-out observations
+- Common quantile levels (P10, P50, P90) for 80% interval comparison
+- Point-only baselines contribute MAE, RMSE, MASE, bias; interval metrics are N/A
+
+#### Step 4: Tests
+**Files**: `tests/unit/test_comparison.py`
+- Test comparison report structure
+- Test model comparison item structure
+- Test validation (requires models, sufficient data)
+- Test progress callback functionality
+
+**Results**: 5 new tests pass, total 28 unit tests pass
+
+### Comparison Feature Status
+
+**Implemented**:
+- `compare_models()` service method
+- Comparison result types
+- Sequential model execution with memory management
+- Progress callback support
+- Shared evaluation splits
+- Error handling (one model failure doesn't stop others)
+- Unit tests for orchestration
+
+**Not Yet Implemented** (future work):
+- UI integration (model multiselect, overlay charts, score table)
+- CSV export for comparison reports
+- Visual comparison of forecasts
+- Per-model warnings panel in UI
+
+### Recommended First Release
+
+**Models**: TimesFM 2.5, T0-Gamma, Naive, Seasonal Naive (exclude TimesFM 3.0 until adapter implemented)
+
+**Input**: One target series, same data preparation across all models
+
+**Comparison**: Point forecasts + common P10/P50/P90 quantiles where supported
+
+**Evaluation**: Common rolling-origin splits, MAE, RMSE, MASE, bias; interval coverage/width/pinball where valid
+
+**Execution**: Sequential model loading, clear progress/error messages
+
+---
+
+## Original Code Review Fixes - October 22, 2026
+
 ## Critical Issues Fixed (P1)
 
 ### 1. T0-Gamma Quantile Handling (Likely Crash)

@@ -33,6 +33,7 @@ class ModelRegistryEntry:
     # Optional: minimum package version, extra dependencies
     min_package_version: str = ""
     extra_deps: tuple[str, ...] = ()
+    experimental: bool = False  # If True, adapter not yet fully implemented
 
 
 class ModelRegistry:
@@ -85,42 +86,6 @@ class ModelRegistry:
             )
         )
 
-        # TimesFM 3.0 — Restricted (Non-Commercial License)
-        self.register(
-            ModelRegistryEntry(
-                model_key="timesfm_3",
-                display_name="TimesFM 3.0 (330M) — Research Only",
-                adapter_class="forecasting.adapters.timesfm3.TimesFM3Adapter",
-                capabilities=ModelCapabilities(
-                    model_key="timesfm_3",
-                    display_name="TimesFM 3.0 (330M)",
-                    checkpoint_id="google/timesfm-3.0-pytorch",
-                    checkpoint_revision="main",
-                    supports_cpu=True,
-                    supports_cuda=True,
-                    supports_mps=False,  # UNVERIFIED
-                    supports_multivariate=True,
-                    supports_past_covariates=True,
-                    supports_known_future_covariates=True,
-                    native_quantile_levels=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
-                    max_context_length=32768,  # Patch-based, effective limit depends on memory
-                    min_context_length=32,
-                    max_horizon=1024,
-                    compiles_context_horizon=False,
-                    supports_batch_inference=True,
-                    license_policy=LicensePolicy.RESEARCH,
-                    license_notice=(
-                        "TimesFM Non-Commercial License v1.0: "
-                        "Weights restricted to non-commercial, non-production use only. "
-                        "Commercial/production use requires authorized Google Cloud services (BigQuery ML). "
-                        "Source code is Apache-2.0."
-                    ),
-                ),
-                license_policy=LicensePolicy.RESEARCH,
-                min_package_version="timesfm[torch]>=3.0.0",
-            )
-        )
-
         # TimesFM 3.0 — EXPERIMENTAL (adapter not yet implemented)
         self.register(
             ModelRegistryEntry(
@@ -135,9 +100,9 @@ class ModelRegistry:
                     supports_cpu=True,
                     supports_cuda=True,
                     supports_mps=False,
-                    supports_multivariate=True,
-                    supports_past_covariates=True,
-                    supports_known_future_covariates=True,
+                    supports_multivariate=False,  # Not yet implemented
+                    supports_past_covariates=False,  # Not yet implemented
+                    supports_known_future_covariates=False,  # Not yet implemented
                     native_quantile_levels=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
                     max_context_length=32768,
                     min_context_length=32,
@@ -151,10 +116,10 @@ class ModelRegistry:
                         "Commercial/production use requires authorized Google Cloud services (BigQuery ML). "
                         "Source code is Apache-2.0. ADAPTER NOT YET IMPLEMENTED."
                     ),
-                    experimental=True,
                 ),
                 license_policy=LicensePolicy.RESEARCH,
                 min_package_version="timesfm[torch]>=3.0.0",
+                experimental=True,
             )
         )
 
@@ -172,13 +137,13 @@ class ModelRegistry:
                     supports_cpu=True,
                     supports_cuda=True,
                     supports_mps=False,  # UNVERIFIED
-                    supports_multivariate=True,
-                    supports_past_covariates=True,
-                    supports_known_future_covariates=True,
+                    supports_multivariate=False,  # Currently forecasts each target independently
+                    supports_past_covariates=False,  # Not yet implemented
+                    supports_known_future_covariates=False,  # Not yet implemented
                     native_quantile_levels=(
                         0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
                         0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
-                    ),  # 21 quantiles - exact levels to be verified
+                    ),
                     max_context_length=32768,
                     min_context_length=1,
                     max_horizon=1024,
@@ -213,9 +178,9 @@ class ModelRegistry:
                     supports_cpu=True,
                     supports_cuda=True,
                     supports_mps=False,  # UNVERIFIED
-                    supports_multivariate=True,
-                    supports_past_covariates=True,
-                    supports_known_future_covariates=True,
+                    supports_multivariate=False,  # Currently forecasts each target independently
+                    supports_past_covariates=False,  # Not yet implemented
+                    supports_known_future_covariates=False,  # Not yet implemented
                     native_quantile_levels=(
                         0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
                         0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
@@ -254,9 +219,9 @@ class ModelRegistry:
                     supports_cpu=True,
                     supports_cuda=True,
                     supports_mps=False,  # UNVERIFIED
-                    supports_multivariate=True,
-                    supports_past_covariates=True,
-                    supports_known_future_covariates=True,
+                    supports_multivariate=False,  # Currently forecasts each target independently
+                    supports_past_covariates=False,  # Not yet implemented
+                    supports_known_future_covariates=False,  # Not yet implemented
                     native_quantile_levels=(
                         0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
                         0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
@@ -295,9 +260,9 @@ class ModelRegistry:
                     supports_cpu=True,
                     supports_cuda=True,
                     supports_mps=False,  # UNVERIFIED
-                    supports_multivariate=True,
-                    supports_past_covariates=True,
-                    supports_known_future_covariates=True,
+                    supports_multivariate=False,  # Currently forecasts each target independently
+                    supports_past_covariates=False,  # Not yet implemented
+                    supports_known_future_covariates=False,  # Not yet implemented
                     native_quantile_levels=(
                         0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
                         0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
@@ -337,13 +302,13 @@ class ModelRegistry:
                     supports_cuda=True,
                     supports_mps=False,  # UNVERIFIED for torch; MLX available separately
                     supports_multivariate=True,
-                    supports_past_covariates=True,
-                    supports_known_future_covariates=True,
+                    supports_past_covariates=False,  # Not yet implemented - requires context+horizon alignment
+                    supports_known_future_covariates=False,  # Not yet implemented - requires context+horizon alignment
                     supports_group_forecasting=True,
                     native_quantile_levels=(
-                        0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
-                        0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
-                    ),  # 21 quantiles - user-requested
+                        0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45,
+                        0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99
+                    ),  # 21 quantiles: P01, P05-P95 in 5% increments, P99
                     max_context_length=512,
                     min_context_length=1,
                     max_horizon=1024,
@@ -426,7 +391,15 @@ class ModelRegistry:
         return self._entries.get(model_key)
 
     def list_available(self, policy: LicensePolicy, include_experimental: bool = False) -> list[ModelRegistryEntry]:
-        """List models available under the given policy."""
+        """List models available under the given policy.
+
+        Args:
+            policy: License policy filter (permissive_only or research)
+            include_experimental: If True, include experimental/unimplemented models
+
+        Returns:
+            List of available model registry entries
+        """
         available = []
         for entry in self._entries.values():
             if entry.capabilities.experimental and not include_experimental:

@@ -161,11 +161,15 @@ class TimesFM25Adapter(BaseAdapter):
         point, quantiles = model.forecast(horizon=horizon, inputs=[input_values])
 
         point_arr = np.asarray(point[0], dtype=float)  # [horizon]
-        q_arr = (
-            np.asarray(quantiles[0], dtype=float)
-            if quantiles is not None
-            else np.column_stack([point_arr] * 9)  # 9 quantiles (0.1-0.9)
-        )
+
+        if quantiles is None:
+            raise ValueError(
+                "TimesFM 2.5 did not return quantile forecasts. "
+                "Probabilistic forecasts are unavailable for this configuration. "
+                "Use point forecasts only or check model configuration."
+            )
+
+        q_arr = np.asarray(quantiles[0], dtype=float)
 
         # q_arr shape: [horizon, 9] for quantiles 0.1-0.9
         # But TimesFM 2.5 returns 10 columns: mean + 9 quantiles

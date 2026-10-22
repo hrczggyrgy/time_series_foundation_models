@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from forecasting.comparison import ComparisonReport, ModelComparisonItem
 from forecasting.contracts import ForecastRequest, ForecastResult, RuntimeConfig
 from forecasting.data.parsing import (
     ParsedData,
@@ -414,6 +415,210 @@ class ForecastingService:
             ),
             timing=job.timing,
         )
+
+    def compare_models(
+        self,
+        model_keys: list[str],
+        parsed_data: ParsedData,
+        horizon: int,
+        n_windows: int = 3,
+        step_size: int | None = None,
+        expanding_window: bool = True,
+        runtime_config: RuntimeConfig | None = None,
+        business_days_only: bool = False,
+        quantile_levels: tuple[float, ...] = (0.1, 0.5, 0.9),  # Common 80% interval
+        policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
+        acknowledged: set[str] | None = None,
+        progress_callback: callable | None = None,
+    ) -> ComparisonReport:
+        """Compare multiple forecasting models on the same dataset.
+
+        Args:
+            model_keys: List of model keys to compare
+            parsed_data: Prepared dataset
+            horizon: Forecast horizon
+            n_windows: Number of backtest windows
+            step_size: Step size between windows (None = horizon)
+            expanding_window: Whether to use expanding window
+            runtime_config: Runtime configuration
+            business_days_only: Whether to use business days only
+            quantile_levels: Quantile levels for probabilistic forecasts
+            policy: License policy
+            acknowledged: Set of acknowledged restricted models
+            progress_callback: Optional callback for progress updates (model_key, status)
+
+        Returns:
+            ComparisonReport with results for all models
+        """
+        from datetime import datetime
+        import uuid
+
+        comparison_id = str(uuid.uuid4())[:8]
+        start_time = time.time()
+        runtime = runtime_config or self.default_runtime
+
+        # Validate model selection
+        if not model_keys:
+            raise ValueError("At least one model must be selected for comparison")
+
+        # Generate shared evaluation splits (same for all models)
+        df = parsed_data.df
+        actual_target_columns = []
+        for i, col in enumerate(parsed_data.target_columns):
+            if i == 0 and "y" in df.columns:
+                actual_target_columns.append("y")
+            elif col in df.columns:
+                actual_target_columns.append(col)
+            else:
+                actual_target_columns.append(col)
+
+        target_history = df[actual_target_columns].T.values
+        history_index = df["ds"]
+
+        from forecasting.evaluation.backtesting import generate_backtest_splits
+        splits = generate_backtest_splits(
+            n_obs=target_history.shape[1],
+            horizon=horizon,
+            n_windows=n_windows,
+            step_size=step_size,
+            expanding=expanding_window,
+            min_train=32,
+        )
+
+        if not splits:
+            raise ValueError(
+                f"Insufficient data for comparison: need at least 32 + {horizon} observations"
+            )
+
+        # Extract evaluation origins (train end dates)
+        evaluation_origins = [history_index[train_end - 1] for train_end, _ in splits]
+
+        # Run each model sequentially
+        model_results = {}
+        for model_key in model_keys:
+            model_start = time.time()
+
+            if progress_callback:
+                progress_callback(model_key, "loading")
+
+            try:
+                # Get adapter
+                adapter = self.registry.get_adapter(model_key, runtime, policy, acknowledged)
+
+                # Run backtest with shared splits
+                backtest = run_backtest(
+                    adapter=adapter,
+                    target_history=target_history,
+                    history_index=history_index,
+                    target_names=tuple(parsed_data.target_columns),
+                    config=BacktestConfig(
+                        horizon=horizon,
+                        n_windows=n_windows,
+                        step_size=step_size,
+                        expanding_window=expanding_window,
+                        min_training_length=32,
+                    ),
+                    past_covariates=None,
+                    known_covariates_history=None,
+                    known_covariates_future=None,
+                    quantile_levels=quantile_levels,
+                    observation_mask=parsed_data.observation_mask.values if hasattr(parsed_data, 'observation_mask') else None,
+                )
+
+                # Create a minimal forecast job for comparison
+                # Use the first window's forecast as representative
+                first_window = backtest.windows[0] if backtest.windows else None
+                if first_window:
+                    from forecasting.contracts import ForecastResult
+                    forecast_result = ForecastResult(
+                        point=first_window.point_forecasts,
+                        quantiles=first_window.quantile_forecasts,
+                        quantile_levels=first_window.quantile_levels,
+                        model_key=model_key,
+                        checkpoint_id=adapter.capabilities.checkpoint_id,
+                        context_used=first_window.context_used,
+                        warnings=[],
+                        metadata={},
+                    )
+                else:
+                    forecast_result = None
+
+                # Create minimal job
+                job = ForecastJob(
+                    run_id=generate_run_id(),
+                    request=ForecastRequest(
+                        target_history=target_history[:, :splits[0][0]],
+                        history_index=history_index[:splits[0][0]],
+                        target_names=tuple(parsed_data.target_columns),
+                        horizon=horizon,
+                        future_index=history_index[splits[0][0]:splits[0][0] + horizon],
+                        quantile_levels=quantile_levels,
+                    ),
+                    result=forecast_result,
+                    backtest=backtest,
+                    timing={"backtest_sec": time.time() - model_start},
+                    data_fingerprint=parsed_data.raw_signature,
+                )
+
+                model_results[model_key] = ModelComparisonItem(
+                    model_key=model_key,
+                    display_name=adapter.capabilities.display_name,
+                    forecast=job,
+                    backtest=backtest,
+                    error=None,
+                    elapsed_seconds=time.time() - model_start,
+                    context_used=backtest.windows[0].context_used if backtest.windows else None,
+                    warnings=job.result.warnings if job.result else [],
+                )
+
+                if progress_callback:
+                    progress_callback(model_key, "complete")
+
+            except Exception as e:
+                model_results[model_key] = ModelComparisonItem(
+                    model_key=model_key,
+                    display_name=model_key,
+                    forecast=None,
+                    backtest=None,
+                    error=str(e),
+                    elapsed_seconds=time.time() - model_start,
+                    context_used=None,
+                    warnings=[],
+                )
+
+                if progress_callback:
+                    progress_callback(model_key, f"failed: {str(e)}")
+
+                # Continue with other models
+                continue
+
+        # Release adapter memory by clearing cache
+        # (Optional: could be more selective)
+        for model_key in model_keys:
+            self._release_adapter(model_key, runtime)
+
+        return ComparisonReport(
+            comparison_id=comparison_id,
+            model_results=model_results,
+            horizon=horizon,
+            evaluation_origins=evaluation_origins,
+            settings={
+                "n_windows": n_windows,
+                "step_size": step_size,
+                "expanding_window": expanding_window,
+                "quantile_levels": quantile_levels,
+                "business_days_only": business_days_only,
+                "policy": policy.value,
+            },
+            data_fingerprint=parsed_data.raw_signature,
+            timestamp=datetime.utcnow().isoformat(),
+        )
+
+    def _release_adapter(self, model_key: str, runtime_config: RuntimeConfig) -> None:
+        """Release adapter from cache to free memory."""
+        cache_key = self.registry._cache_key(model_key, runtime_config)
+        if cache_key in self.registry._instances:
+            del self.registry._instances[cache_key]
 
 
 # Convenience function for demo data
