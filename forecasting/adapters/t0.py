@@ -93,23 +93,56 @@ class T0GammaAdapter(BaseAdapter):
             context_tensor = context_tensor.unsqueeze(1)  # [targets, 1, history]
 
         # Prepare covariates if provided
-        past_cov = None
+        # t0-gamma expects future_covariates to include both historical and future known covariates
+        future_covariates = None
+        
+        # Build combined covariates: past_covariates + known_covariates
+        # t0 expects [batch, features, context + horizon]
+        covariate_parts = []
+        
         if request.past_covariates is not None:
-            pc = request.past_covariates  # [past_features, history]
-            past_cov = torch.from_numpy(pc.astype(np.float32)).to(device)
-            if past_cov.ndim == 2:
-                past_cov = past_cov.unsqueeze(0).repeat(n_targets, 1, 1)  # [targets, past_features, history]
-
-        known_cov_hist = None
-        known_cov_future = None
-        if request.known_covariates_history is not None and request.known_covariates_future is not None:
-            # Concatenate history + future for t0's expected format [context + horizon]
-            kch = request.known_covariates_history  # [known_features, history]
-            kcf = request.known_covariates_future   # [known_features, horizon]
-            known_full = np.concatenate([kch, kcf], axis=1)  # [known_features, context + horizon]
-            known_cov_hist = torch.from_numpy(known_full.astype(np.float32)).to(device)
-            if known_cov_hist.ndim == 2:
-                known_cov_hist = known_cov_hist.unsqueeze(0).repeat(n_targets, 1, 1)
+            covariate_parts.append(("past", request.past_covariates))
+        
+        if request.known_covariates_history is not None:
+            covariate_parts.append(("known_hist", request.known_covariates_history))
+        
+        if request.known_covariates_future is not None:
+            covariate_parts.append(("known_future", request.known_covariates_future))
+        
+        if covariate_parts:
+            # Build combined covariate tensor
+            # First, align all historical covariates to context length
+            context_len = context_tensor.shape[-1]
+            combined_hist = []
+            combined_future = []
+            
+            for name, cov in covariate_parts:
+                if name in ("past", "known_hist"):
+                    # Historical covariate - use up to context_len
+                    if cov.shape[-1] >= context_len:
+                        combined_hist.append(cov[:, -context_len:])
+                    else:
+                        # Pad if shorter (shouldn't happen with proper prep)
+                        pad_width = context_len - cov.shape[-1]
+                        combined_hist.append(np.pad(cov, ((0, 0), (pad_width, 0)), mode='edge'))
+                elif name == "known_future":
+                    combined_future.append(cov)
+            
+            if combined_hist:
+                hist_combined = np.concatenate(combined_hist, axis=0)  # [total_features, context]
+                if combined_future:
+                    future_combined = np.concatenate(combined_future, axis=0)
+                    # Concatenate historical + future for full covariate tensor
+                    full_combined = np.concatenate([hist_combined, future_combined], axis=1)
+                else:
+                    full_combined = hist_combined
+            else:
+                # Only future covariates provided
+                full_combined = np.concatenate(combined_future, axis=0)
+            
+            future_covariates = torch.from_numpy(full_combined.astype(np.float32)).to(device)
+            if future_covariates.ndim == 2:
+                future_covariates = future_covariates.unsqueeze(0).repeat(n_targets, 1, 1)
 
         # Request quantile levels
         quantile_levels = np.array(request.quantile_levels, dtype=np.float32)
@@ -121,8 +154,7 @@ class T0GammaAdapter(BaseAdapter):
                 context_tensor,
                 horizon=horizon,
                 quantile_levels=quantile_levels,
-                past_covariates=past_cov,
-                future_covariates=known_cov_hist,
+                future_covariates=future_covariates,
             )
 
         # out.quantiles: [batch, horizon, n_quantiles] or [batch, features, horizon, n_quantiles]
