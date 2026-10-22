@@ -2,4 +2,8 @@
 headless = true
 port = 7860
 address = "0.0.0.0"
-enableXsrfProtection = true
+enableXsrfProtection = false
+enableCORS = false
+
+[browser]
+gatherUsageStats = false
