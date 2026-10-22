@@ -1,72 +1,82 @@
-# 📈 Multi-Model Time-Series Forecasting Workbench
+---
+title: "Multi-Model Time-Series Forecasting Workbench"
+emoji: "📊"
+colorFrom: "blue"
+colorTo: "indigo"
+sdk: "streamlit"
+sdk_version: "1.28.0"
+python_version: "3.10"
+app_file: "app.py"
+pinned: false
+---
 
-![Multi-Model Forecasting Workbench](https://raw.githubusercontent.com/hrczggyrgy/time_series_foundation_models/master/docs/header/header.jpeg)
+# Multi-Model Time-Series Forecasting Workbench
 
-[![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/hrczggyrgy/TSFMs_forecasting)
+[![Hugging Face Space](https://img.shields.io/badge/Hugging%20Face-Space-blue)](https://huggingface.co/spaces/hrczggyorgy/TSFMs_forecasting)
 [![GitHub](https://img.shields.io/badge/GitHub-Repo-black?logo=github)](https://github.com/hrczggyrgy/time_series_foundation_models)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10+-blue)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 
-**Live demo:** [https://huggingface.co/spaces/hrczggyrgy/TSFMs_forecasting](https://huggingface.co/spaces/hrczggyrgy/TSFMs_forecasting)
+**Live demo:** https://huggingface.co/spaces/hrczggyorgy/TSFMs_forecasting
 
-A modular, extensible zero-shot forecasting workbench supporting **7 foundation models** with unified probabilistic outputs, leakage-free backtesting, and license-aware model selection.
+A modular, extensible zero-shot forecasting workbench supporting 7 foundation models with unified probabilistic outputs, leakage-free backtesting, and license-aware model selection.
 
 ---
 
-## 🎯 Supported Models
+## Supported Models
 
 | Model | Parameters | License | Policy | Multivariate | Covariates | Context | Horizon | Quantiles |
 |-------|------------|---------|--------|--------------|------------|---------|---------|-----------|
-| **TimesFM 2.5** | 200M | Apache-2.0 | ✅ Permissive | ❌ | Future-only | 16k | 512 | 9 (0.1–0.9) |
-| **TimesFM 3.0** | 330M | Non-commercial v1.0 | 🔬 Research | ✅ | Full | 32k+ | 1024 | 9 (0.1–0.9) |
-| **t0-gamma** | 100M+ | Apache-2.0 | ✅ Permissive | ✅ | Full | 512 | 1024 | 21 (0.01–0.99) |
-| **Timestral 209M** | 209M | Modified MIT ($20M cap) | 🔬 Research | ✅ | Full | 32k | 1024 | 21 (0.01–0.99) |
-| **Timestral 28M** | 28M | Modified MIT ($20M cap) | 🔬 Research | ✅ | Full | 32k | 1024 | 21 (0.01–0.99) |
-| **Timestral 123M** | 123M | Modified MIT ($20M cap) | 🔬 Research | ✅ | Full | 32k | 1024 | 21 (0.01–0.99) |
-| **Timestral 5M** | 5M | Modified MIT ($20M cap) | 🔬 Research | ✅ | Full | 32k | 1024 | 21 (0.01–0.99) |
-| **Naive** | — | — | ✅ Permissive | ❌ | ❌ | Any | Any | None |
-| **Seasonal Naive** | — | — | ✅ Permissive | ❌ | ❌ | Any | Any | None |
+| TimesFM 2.5 | 200M | Apache-2.0 | Permissive | No | Future-only | 16k | 512 | 9 (0.1-0.9) |
+| TimesFM 3.0 | 330M | Non-commercial v1.0 | Research | Yes | Full | 32k+ | 1024 | 9 (0.1-0.9) |
+| t0-gamma | 100M+ | Apache-2.0 | Permissive | Yes | Full | 512 | 1024 | 21 (0.01-0.99) |
+| Timestral 209M | 209M | Modified MIT ($20M cap) | Research | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
+| Timestral 28M | 28M | Modified MIT ($20M cap) | Research | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
+| Timestral 123M | 123M | Modified MIT ($20M cap) | Research | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
+| Timestral 5M | 5M | Modified MIT ($20M cap) | Research | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
+| Naive | — | — | Permissive | No | No | Any | Any | None |
+| Seasonal Naive | — | — | Permissive | No | No | Any | Any | None |
 
 > **License Policy**: Default `permissive_only` enables only Apache-2.0 models. Switch to `research` mode to access restricted models after acknowledging their license terms.
 
 ---
 
-## ✨ Features
+## Features
 
 ### Core Forecasting
-- **Zero-shot forecasting** — no training required, works out-of-the-box
-- **Unified probabilistic interface** — all models return calibrated quantiles (not just point forecasts)
-- **Multi-model comparison** — run identical backtests across models with controlled context/horizon
-- **Multivariate support** — t0-gamma supports joint forecasting (experimental)
-- **Covariate support** — planned feature (not yet implemented in current adapters)
+- Zero-shot forecasting — no training required, works out-of-the-box
+- Unified probabilistic interface — all models return calibrated quantiles (not just point forecasts)
+- Multi-model comparison — run identical backtests across models with controlled context/horizon
+- Multivariate support — t0-gamma supports joint forecasting (experimental)
+- Covariate support — planned feature (not yet implemented in current adapters)
 
 ### Data & Diagnostics
-- **CSV upload** with auto column detection (date + multiple targets)
-- **Data validation** — irregular gaps, outliers, duplicates, stationarity (ADF), trend analysis
-- **Seasonal decomposition** — STL with multiple candidate periods
-- **Frequency inference** — robust detection with fallback to delta-mode
+- CSV upload with auto column detection (date + multiple targets)
+- Data validation — irregular gaps, outliers, duplicates, stationarity (ADF), trend analysis
+- Seasonal decomposition — STL with multiple candidate periods
+- Frequency inference — robust detection with fallback to delta-mode
 
 ### Evaluation & Backtesting
-- **Rolling-origin backtesting** — expanding/sliding windows with observation mask filtering
-- **Comprehensive metrics**: MAE, RMSE, MAPE, MASE, Bias, Pinball Loss, CRPS, Interval Coverage/Width
-- **Per-window & aggregate reporting** — CSV export with forecast origin tracking
-- **Calibration diagnostics** — coverage vs. nominal intervals, quantile crossing detection
-- **Note**: RMSE aggregation uses mean of window-level RMSEs (approximate pooled RMSE)
+- Rolling-origin backtesting — expanding/sliding windows with observation mask filtering
+- Comprehensive metrics: MAE, RMSE, MAPE, MASE, Bias, Pinball Loss, CRPS, Interval Coverage/Width
+- Per-window & aggregate reporting — CSV export with forecast origin tracking
+- Calibration diagnostics — coverage vs. nominal intervals, quantile crossing detection
+- Note: RMSE aggregation uses mean of window-level RMSEs (approximate pooled RMSE)
 
 ### Reproducibility & Export
-- **Long & wide format CSV exports** — forecasts, quantiles, actuals, errors
-- **Metadata JSON** — git commit, data fingerprint, model checkpoint, preprocessing, timing
-- **Run ID tracking** — unique identifier for every forecast/backtest job
+- Long & wide format CSV exports — forecasts, quantiles, actuals, errors
+- Metadata JSON — git commit, data fingerprint, model checkpoint, preprocessing, timing
+- Run ID tracking — unique identifier for every forecast/backtest job
 
 ### UX & Operations
-- **License policy selector** — permissive-only vs research mode with acknowledgment flow
-- **Model capability badges** — multivariate, covariates, context, horizon, quantiles at a glance
-- **Autopilot mode** — recommended horizon/context based on data frequency
-- **Docker-ready** — CPU/GPU, persistent model cache volume
+- License policy selector — permissive-only vs research mode with acknowledgment flow
+- Model capability badges — multivariate, covariates, context, horizon, quantiles at a glance
+- Autopilot mode — recommended horizon/context based on data frequency
+- Docker-ready — CPU/GPU, persistent model cache volume
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Local (Python 3.10+)
 
@@ -107,7 +117,7 @@ Deploy directly from this repo — the Space auto-builds from the `Dockerfile`.
 
 ---
 
-## ⚠️ Known Limitations
+## Known Limitations
 
 ### Quantile Handling
 - **TimesFM 2.5**: Only supports P10-P90 quantiles. Requesting P05/P95 will clamp to P10/P90 with a warning. 90% intervals are effectively narrower than advertised.
@@ -126,14 +136,14 @@ Deploy directly from this repo — the Space auto-builds from the `Dockerfile`.
 
 ---
 
-## 📋 Usage Workflow
+## Usage Workflow
 
 ```
-1. DATA ──────────────────► 2. DIAGNOSTICS ──────► 3. FORECAST ───────► 4. EVALUATION
-   • Upload CSV / Demo          • Trend (p-value)        • Model select       • MAE / RMSE / MAPE
-   • Column mapping             • Stationarity (ADF)     • Horizon / interval • MASE / CRPS
-   • Auto-fix gaps/dups         • Seasonal periods       • Permissive/Research • Coverage / Width
-   • Validation report          • Outlier count          • Backtest toggle     • Per-window table
+1. DATA                 2. DIAGNOSTICS           3. FORECAST              4. EVALUATION
+   Upload CSV / Demo       Trend (p-value)          Model select            MAE / RMSE / MAPE
+   Column mapping          Stationarity (ADF)       Horizon / interval      MASE / CRPS
+   Auto-fix gaps/dups      Seasonal periods         Permissive/Research     Coverage / Width
+   Validation report       Outlier count            Backtest toggle         Per-window table
 ```
 
 ### Data Format
@@ -150,7 +160,7 @@ Deploy directly from this repo — the Space auto-builds from the `Dockerfile`.
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 | Variable | Default | Description |
@@ -159,7 +169,7 @@ Deploy directly from this repo — the Space auto-builds from the `Dockerfile`.
 | `TORCH_THREADS` | 4 | CPU threads for PyTorch |
 
 ### Model Cache
-Models download to `~/.cache/huggingface/hub/` on first use (~400MB–2GB each). Mount a volume in Docker for persistence:
+Models download to `~/.cache/huggingface/hub/` on first use (~400MB-2GB each). Mount a volume in Docker for persistence:
 ```bash
 -v /host/path/models:/home/user/.cache/huggingface
 ```
@@ -173,7 +183,7 @@ The app auto-detects CUDA/MPS/CPU.
 
 ---
 
-## 📦 Project Structure
+## Project Structure
 
 ```
 ├── app.py                    # Streamlit UI (orchestrator)
@@ -218,7 +228,7 @@ The app auto-detects CUDA/MPS/CPU.
 
 ---
 
-## 📄 License
+## License
 
 **Application code**: Apache-2.0 (see `LICENSE`)
 
@@ -231,7 +241,7 @@ The app auto-detects CUDA/MPS/CPU.
 
 ---
 
-## 📚 References
+## References
 
 - [TimesFM GitHub](https://github.com/google-research/timesfm) / [HF](https://huggingface.co/google/timesfm-2.5-200m-pytorch) / [TimesFM 3.0](https://huggingface.co/google/timesfm-3.0-pytorch)
 - [Timestral HF](https://huggingface.co/mistralai/Timestral-209M) / [Mistral Blog](https://mistral.ai/news/timestral)
@@ -241,7 +251,7 @@ The app auto-detects CUDA/MPS/CPU.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork & create feature branch
 2. Add model adapter in `forecasting/adapters/` implementing `ForecastAdapter`
@@ -251,7 +261,7 @@ The app auto-detects CUDA/MPS/CPU.
 
 ---
 
-## 📝 Citation
+## Citation
 
 If you use this workbench in research, please cite the underlying models:
 
