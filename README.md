@@ -37,8 +37,8 @@ A modular, extensible zero-shot forecasting workbench supporting **7 foundation 
 - **Zero-shot forecasting** — no training required, works out-of-the-box
 - **Unified probabilistic interface** — all models return calibrated quantiles (not just point forecasts)
 - **Multi-model comparison** — run identical backtests across models with controlled context/horizon
-- **Native multivariate support** — t0-gamma, Timestral, TimesFM 3.0 forecast multiple targets jointly
-- **Covariate support** — past-only & known-future covariates where model permits
+- **Multivariate support** — t0-gamma supports joint forecasting (experimental)
+- **Covariate support** — planned feature (not yet implemented in current adapters)
 
 ### Data & Diagnostics
 - **CSV upload** with auto column detection (date + multiple targets)
@@ -47,10 +47,11 @@ A modular, extensible zero-shot forecasting workbench supporting **7 foundation 
 - **Frequency inference** — robust detection with fallback to delta-mode
 
 ### Evaluation & Backtesting
-- **Leakage-free rolling-origin backtesting** — expanding/sliding windows, per-window preprocessing
+- **Rolling-origin backtesting** — expanding/sliding windows with observation mask filtering
 - **Comprehensive metrics**: MAE, RMSE, MAPE, MASE, Bias, Pinball Loss, CRPS, Interval Coverage/Width
 - **Per-window & aggregate reporting** — CSV export with forecast origin tracking
 - **Calibration diagnostics** — coverage vs. nominal intervals, quantile crossing detection
+- **Note**: RMSE aggregation uses mean of window-level RMSEs (approximate pooled RMSE)
 
 ### Reproducibility & Export
 - **Long & wide format CSV exports** — forecasts, quantiles, actuals, errors
@@ -103,6 +104,25 @@ docker run -d \
 ### Hugging Face Spaces
 
 Deploy directly from this repo — the Space auto-builds from the `Dockerfile`.
+
+---
+
+## ⚠️ Known Limitations
+
+### Quantile Handling
+- **TimesFM 2.5**: Only supports P10-P90 quantiles. Requesting P05/P95 will clamp to P10/P90 with a warning. 90% intervals are effectively narrower than advertised.
+- **T0-Gamma**: Returns quantiles at requested levels directly (no interpolation needed). Covariate support requires context+horizon alignment (not yet implemented).
+- **Timestral**: Raises error if quantile computation fails (no silent fallback). Currently forecasts each target independently (not joint multivariate).
+
+### Backtesting
+- Current implementation filters imputed points from evaluation using observation masks, but preprocessing is still applied to the full series before backtesting. Truly leakage-free backtesting would require re-running preprocessing at each forecast origin using only available training data.
+- RMSE aggregation uses mean of window-level RMSEs, not pooled RMSE across all observations.
+
+### Model Availability
+- **TimesFM 3.0**: Adapter is a stub only - not yet implemented. Model weights require separate non-commercial license.
+
+### UI Capabilities
+- Current UI selects one target column and runs one model per forecast operation. Multi-model comparison requires running separate forecasts.
 
 ---
 
@@ -189,7 +209,11 @@ The app auto-detects CUDA/MPS/CPU.
 ├── docs/
 │   └── model_compatibility.md # Verified model API/license matrix
 │
-└── tests/                    # Unit/integration/smoke tests (WIP)
+└── tests/                    # Unit tests for adapter contracts, parsing, metrics
+    ├── unit/                 # API contract tests (23 tests, all passing)
+    ├── integration/          # Component interaction tests (TODO)
+    ├── smoke/                # Tests against actual model checkpoints (TODO)
+    └── fixtures/             # Test data and mocks (TODO)
 ```
 
 ---

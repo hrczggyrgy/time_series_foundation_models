@@ -175,8 +175,12 @@ class TimesFM25Adapter(BaseAdapter):
             mean_col = q_arr[:, 0]
             q_arr = q_arr[:, 1:]  # Keep only quantiles
         elif q_arr.shape[1] != 9:
-            # Fallback: replicate point forecast
-            q_arr = np.column_stack([point_arr] * 9)
+            # Unexpected shape - raise error instead of fabricating quantiles
+            raise ValueError(
+                f"TimesFM 2.5 returned unexpected quantile shape: {q_arr.shape}. "
+                f"Expected 9 quantile columns (0.1-0.9) or 10 columns (mean + 9 quantiles). "
+                f"Cannot fabricate probabilistic forecasts from point predictions."
+            )
 
         # Reshape to [1, horizon, 9]
         q_arr = q_arr.reshape(1, horizon, 9)
@@ -191,6 +195,14 @@ class TimesFM25Adapter(BaseAdapter):
         requested_levels = np.array(request.quantile_levels)
         native_levels = np.array(self.capabilities.native_quantile_levels)
 
+        # Check if requested levels are outside native range
+        if requested_levels[0] < native_levels[0] or requested_levels[-1] > native_levels[-1]:
+            warnings.append(
+                f"TimesFM 2.5 only supports quantiles {native_levels[0]:.0%} to {native_levels[-1]:.0%}. "
+                f"Requested levels outside this range will be clamped to nearest available quantile. "
+                f"This means intervals like 90% (P05-P95) will effectively be narrower than advertised."
+            )
+
         if not np.array_equal(requested_levels, native_levels):
             q_arr = self._interpolate_quantiles(q_arr, native_levels, requested_levels)
             warnings.append(
@@ -202,7 +214,7 @@ class TimesFM25Adapter(BaseAdapter):
             quantiles=q_arr,
             quantile_levels=requested_levels,
             request=request,
-            point_definition="native_mean",  # TimesFM 2.5 returns mean as point
+            point_definition="median",  # TimesFM API returns median as point forecast
             context_used=ctx,
             warnings=warnings,
             metadata={
@@ -251,7 +263,7 @@ class TimesFM25Adapter(BaseAdapter):
             quantiles=quantiles,
             quantile_levels=request.quantile_levels,
             request=request,
-            point_definition="native_mean",
+            point_definition="median",
             context_used=min(r.context_used for r in results),
             warnings=all_warnings,
             metadata={"merged_from_univariate": True},

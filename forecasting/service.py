@@ -105,7 +105,7 @@ class ForecastingService:
         raw_bytes = raw_df.to_csv(index=False).encode()
         fingerprint = hashlib.md5(raw_bytes).hexdigest()[:16]
 
-        prepared, prep_info = prepare_dataframe(
+        prepared, prep_info, observation_mask = prepare_dataframe(
             raw_df=raw_df,
             date_col=date_col,
             target_cols=target_cols,
@@ -125,6 +125,7 @@ class ForecastingService:
             known_covariate_columns=known_covariate_cols or [],
             prep_report=prep_info,
             raw_signature=fingerprint,
+            observation_mask=observation_mask,
         )
         return parsed, validation
 
@@ -311,6 +312,7 @@ class ForecastingService:
             known_covariates_history=known_hist,
             known_covariates_future=None,  # Would need separate future covariate data
             quantile_levels=quantile_levels,
+            observation_mask=parsed_data.observation_mask.values if hasattr(parsed_data, 'observation_mask') else None,
         )
 
     def run_forecast_with_backtest(

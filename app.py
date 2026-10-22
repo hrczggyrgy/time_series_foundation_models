@@ -885,7 +885,14 @@ def render_tab_evaluation(ui_config: ForecastConfigUI) -> None:
         return
 
     if bt is None:
-        st.warning("Backtest results not available.")
+        # Check if there's a backtest error stored in the job timing
+        backtest_error = job.timing.get("backtest_error") if job else None
+        if backtest_error:
+            st.error(f"Backtest failed: {backtest_error}")
+            with st.expander("Technical details"):
+                st.code(backtest_error)
+        else:
+            st.warning("Backtest results not available.")
         return
 
     # Aggregate metrics
