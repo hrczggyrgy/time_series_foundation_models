@@ -25,6 +25,7 @@ from forecasting.service import ForecastingService, generate_demo_data, LicenseP
 from forecasting.registry import ModelRegistry, get_registry
 from forecasting.contracts import RuntimeConfig
 from forecasting.reporting.exports import generate_run_id
+from forecasting.data.parsing import ValidationReport
 
 # Constants
 MIN_CONTEXT_LENGTH = 32
