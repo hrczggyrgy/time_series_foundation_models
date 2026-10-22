@@ -23,7 +23,19 @@ jobs:
         env:
           HF_OIDC_RESOURCE: spaces/hrczggyorgy/TSFMs_forecasting
         run: >
-          hf upload hrczggyrgy/TSFMs_forecasting . .
+          hf upload hrczggyorgy/TSFMs_forecasting . .
           --repo-type space
-          --exclude ".git/*" ".github/*" "tests/*" "venv/*" "__pycache__/*" "*.pyc" ".pytest_cache/*" ".mypy_cache/*" "*.csv" "docs/*" "ui/*" ".streamlit/*" ".HF_TOKEN"
+          --exclude ".git/*"
+          --exclude ".github/*"
+          --exclude "tests/*"
+          --exclude "venv/*"
+          --exclude "__pycache__/*"
+          --exclude "*.pyc"
+          --exclude ".pytest_cache/*"
+          --exclude ".mypy_cache/*"
+          --exclude "*.csv"
+          --exclude "docs/*"
+          --exclude "ui/*"
+          --exclude ".streamlit/*"
+          --exclude ".HF_TOKEN"
           --commit-message "Deploy ${GITHUB_SHA::7}"
