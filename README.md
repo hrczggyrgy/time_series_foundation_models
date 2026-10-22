@@ -9,6 +9,8 @@ pinned: false
 
 # 📈 Multi-Model Time-Series Forecasting Workbench
 
+![Multi-Model Forecasting Workbench](https://raw.githubusercontent.com/hrczggyrgy/time_series_foundation_models/master/docs/header/header.jpeg)
+
 [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/hrczggyrgy/TSFMs_forecasting)
 [![GitHub](https://img.shields.io/badge/GitHub-Repo-black?logo=github)](https://github.com/hrczggyrgy/time_series_foundation_models)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](LICENSE)
