@@ -536,7 +536,7 @@ Compare with: {', '.join([model_options[m] for m in selected_models[1:]]) if len
         n_backtest_windows=n_backtest_windows,
         autopilot=autopilot, auto_fix_data=auto_fix_data,
         license_policy=LicensePolicy.RESEARCH, model_key=selected_model,
-    ), data_source
+    ), data_source, selected_models
 
 
 def render_tab_data(data_source: str, ui_config: ForecastConfigUI) -> None:
@@ -1046,18 +1046,7 @@ def main() -> None:
         col2.markdown(readiness_badge(st.session_state.validation_report), unsafe_allow_html=True)
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    ui_config, data_source = render_sidebar(st.session_state.profile_results)
-
-    # Get selected models from sidebar
-    service: ForecastingService = st.session_state.service
-    all_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=False)
-    model_keys = [m["model_key"] for m in all_models]
-    default_models = ["timesfm_2_5"] if "timesfm_2_5" in model_keys else [model_keys[0]]
-    # Filter session state to only include currently available models
-    stored_models = st.session_state.get("selected_models", default_models)
-    selected_models = [m for m in stored_models if m in model_keys]
-    if not selected_models:
-        selected_models = default_models
+    ui_config, data_source, selected_models = render_sidebar(st.session_state.profile_results)
 
     st.markdown('<div class="small-note"><span class="step-chip">1 Data</span><span class="step-chip">2 Diagnostics</span><span class="step-chip">3 Forecast</span><span class="step-chip">4 Evaluation</span><span class="step-chip">5 Comparison</span></div>', unsafe_allow_html=True)
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Data", "Diagnostics", "Forecast", "Evaluation", "Comparison"])
