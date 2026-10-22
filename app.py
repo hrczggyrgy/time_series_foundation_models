@@ -450,44 +450,31 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
 
     service: ForecastingService = st.session_state.service
 
-    # License policy selector
-    policy_options = {
-        LicensePolicy.PERMISSIVE_ONLY: "Permissive only (Apache-2.0 weights)",
-        LicensePolicy.RESEARCH: "Research (includes restricted models)",
-    }
-    selected_policy = st.sidebar.selectbox(
-        "License policy",
-        options=list(policy_options.keys()),
-        format_func=lambda p: policy_options[p],
-        help="Permissive: only models with Apache-2.0 weights. Research: includes models with usage restrictions (TimesFM 3.0 non-commercial, Timestral $20M revenue cap).",
-    )
-
-    # Model selector
-    acknowledged = st.session_state.get("acknowledged_models", set())
-    models = service.list_models(selected_policy, acknowledged)
-    model_options = {m["model_key"]: m["display_name"] for m in models}
+    # Get all available models (all models enabled by default)
+    all_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=True)
+    model_options = {m["model_key"]: m["display_name"] for m in all_models}
     model_keys = list(model_options.keys())
 
-    # Default to timesfm_2_5 if available
-    default_model = "timesfm_2_5" if "timesfm_2_5" in model_keys else model_keys[0]
-    selected_model = st.sidebar.selectbox(
-        "Model",
+    # Multi-model selector for comparison
+    default_models = ["timesfm_2_5"] if "timesfm_2_5" in model_keys else [model_keys[0]]
+    selected_models = st.sidebar.multiselect(
+        "Models to compare",
         options=model_keys,
         format_func=lambda k: model_options[k],
-        index=model_keys.index(default_model),
-        help="Select forecasting model. Restricted models require acknowledgment.",
+        default=st.session_state.get("selected_models", default_models),
+        help="Select one or more models to run and compare. All models are available.",
     )
 
-    # Check if model requires acknowledgment
-    model_info = next((m for m in models if m["model_key"] == selected_model), None)
-    if model_info and model_info["license_policy"] == "research" and not model_info["is_acknowledged"]:
-        st.sidebar.warning(f"⚠️ **License Acknowledgment Required**\n\n{model_info['license_notice']}")
-        if st.sidebar.button("Acknowledge and Enable", type="primary"):
-            if "acknowledged_models" not in st.session_state:
-                st.session_state.acknowledged_models = set()
-            st.session_state.acknowledged_models.add(selected_model)
-            st.rerun()
-        st.sidebar.markdown("---")
+    if not selected_models:
+        st.sidebar.warning("Select at least one model.")
+        st.stop()
+
+    # Store in session state for other tabs
+    st.session_state.selected_models = selected_models
+
+    # Primary model (first selected) for single-model operations
+    selected_model = selected_models[0]
+    model_info = next((m for m in all_models if m["model_key"] == selected_model), None)
 
     # Data source
     data_source = st.sidebar.radio("Data source", ["Synthetic demo data", "Upload CSV"], label_visibility="collapsed")
@@ -536,18 +523,19 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
         max_ctx = f"{caps['max_context']:,}" if caps['max_context'] else 'N/A'
         max_hz = f"{caps['max_horizon']:,}" if caps['max_horizon'] else 'N/A'
         exp_str = " ⚠️ EXPERIMENTAL" if caps.get('experimental', False) else ""
-        st.sidebar.caption(f"""Model: `{model_options[selected_model]}`
+        st.sidebar.caption(f"""Primary model: `{model_options[selected_model]}`
 License: {caps['license_policy']}
 Max context: {max_ctx}
 Max horizon: {max_hz}
-Quantiles: {len(caps['native_quantiles'])} native{exp_str}""")
+Quantiles: {len(caps['native_quantiles'])} native{exp_str}
+Compare with: {', '.join([model_options[m] for m in selected_models[1:]]) if len(selected_models) > 1 else 'none'}""")
 
     return ForecastConfigUI(
         horizon=horizon, interval_coverage=interval_coverage,
         business_days_only=business_days_only, backtest_mode=backtest_mode,
         n_backtest_windows=n_backtest_windows,
         autopilot=autopilot, auto_fix_data=auto_fix_data,
-        license_policy=selected_policy, model_key=selected_model,
+        license_policy=LicensePolicy.RESEARCH, model_key=selected_model,
     ), data_source
 
 
@@ -706,7 +694,7 @@ def render_tab_diagnostics() -> None:
         st.plotly_chart(fig, use_container_width=True)
 
 
-def render_tab_forecast(ui_config: ForecastConfigUI) -> None:
+def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str]) -> None:
     st.markdown("### 3. Forecast")
     service: ForecastingService = st.session_state.service
 
@@ -741,133 +729,129 @@ def render_tab_forecast(ui_config: ForecastConfigUI) -> None:
 
     if should_run:
         horizon = rec_horizon if autopilot_now else ui_config.horizon
-        with st.spinner("Loading model and generating forecast…"):
+        with st.spinner("Loading models and generating forecasts…"):
             try:
                 # Configure runtime
                 runtime = RuntimeConfig(
                     device="auto",
                     dtype="float32",
-                    compile=False,  # Compilation handled by model adapters if needed
+                    compile=False,
                 )
 
-                # Get session policy and acknowledgments
+                # Run forecasts for all selected models
                 policy = ui_config.license_policy
-                acknowledged = st.session_state.get("acknowledged_models", set())
+                acknowledged = set()  # All models enabled
 
-                # Run forecast with backtest if enabled
-                if ui_config.backtest_mode:
-                    job = service.run_forecast_with_backtest(
-                        model_key=ui_config.model_key,
-                        parsed_data=st.session_state.parsed_data,
-                        horizon=horizon,
-                        n_windows=ui_config.n_backtest_windows,
-                        runtime_config=runtime,
-                        business_days_only=ui_config.business_days_only,
-                        quantile_levels=DEFAULT_QUANTILE_LEVELS,
-                        policy=policy,
-                        acknowledged=acknowledged,
-                    )
-                    st.session_state.forecast_job = job
-                    st.session_state.backtest_result = job.backtest
-                else:
-                    job = service.run_forecast(
-                        model_key=ui_config.model_key,
-                        parsed_data=st.session_state.parsed_data,
-                        horizon=horizon,
-                        runtime_config=runtime,
-                        business_days_only=ui_config.business_days_only,
-                        quantile_levels=DEFAULT_QUANTILE_LEVELS,
-                        policy=policy,
-                        acknowledged=acknowledged,
-                    )
-                    st.session_state.forecast_job = job
-                    st.session_state.backtest_result = None
+                jobs = {}
+                for model_key in selected_models:
+                    with st.spinner(f"Running {model_key}..."):
+                        if ui_config.backtest_mode:
+                            job = service.run_forecast_with_backtest(
+                                model_key=model_key,
+                                parsed_data=st.session_state.parsed_data,
+                                horizon=horizon,
+                                n_windows=ui_config.n_backtest_windows,
+                                runtime_config=runtime,
+                                business_days_only=ui_config.business_days_only,
+                                quantile_levels=DEFAULT_QUANTILE_LEVELS,
+                                policy=policy,
+                                acknowledged=acknowledged,
+                            )
+                        else:
+                            job = service.run_forecast(
+                                model_key=model_key,
+                                parsed_data=st.session_state.parsed_data,
+                                horizon=horizon,
+                                runtime_config=runtime,
+                                business_days_only=ui_config.business_days_only,
+                                quantile_levels=DEFAULT_QUANTILE_LEVELS,
+                                policy=policy,
+                                acknowledged=acknowledged,
+                            )
+                        jobs[model_key] = job
 
+                st.session_state.forecast_jobs = jobs
                 st.session_state.run_metadata = {
-                    "model_id": job.result.model_key,
-                    "run_timestamp_utc": job.run_id,
                     "horizon": horizon,
                     "interval_label": ui_config.interval_coverage,
-                    "ctx_used": job.result.context_used,
                     "business_days_only": ui_config.business_days_only,
                     "backtest_mode": ui_config.backtest_mode,
                     "autopilot": autopilot_now,
                     "interval_pct": int(ui_config.interval_coverage * 100),
                 }
+                st.session_state.backtest_results = {k: v.backtest for k, v in jobs.items()}
             except Exception as exc:
                 st.exception(exc)
                 return
 
-    job = st.session_state.forecast_job
-    if job is None:
+    jobs = st.session_state.get("forecast_jobs", {})
+    if not jobs:
         return
 
-    # Display results
-    result = job.result
     meta = st.session_state.run_metadata
 
-    # Build forecast dataframe for display
-    interval_label = f"{int(ui_config.interval_coverage * 100)}%"
-    lo_col = f"Lower_{int(ui_config.interval_coverage * 100)}"
-    hi_col = f"Upper_{int(ui_config.interval_coverage * 100)}"
+    # Display results for each model
+    for model_key, job in jobs.items():
+        result = job.result
+        st.markdown(f"#### Model: {model_key}")
 
-    # Get interval bounds
-    interval_bounds = result.get_interval(ui_config.interval_coverage)
-    if interval_bounds is not None:
-        lower, upper = interval_bounds
-        fc_display = {
-            "point": result.point[0] if result.point.ndim == 2 else result.point,
-            "q_low": lower[0] if lower.ndim == 2 else lower,
-            "q_high": upper[0] if upper.ndim == 2 else upper,
-        }
-    else:
-        fc_display = {
-            "point": result.point[0] if result.point.ndim == 2 else result.point,
-            "q_low": result.point[0] if result.point.ndim == 2 else result.point,
-            "q_high": result.point[0] if result.point.ndim == 2 else result.point,
-        }
+        interval_label = f"{int(ui_config.interval_coverage * 100)}%"
+        lo_col = f"Lower_{int(ui_config.interval_coverage * 100)}"
+        hi_col = f"Upper_{int(ui_config.interval_coverage * 100)}"
 
-    future_dates = result.future_index
-    actuals = None
-    is_bt = bool(meta.get("backtest_mode", False))
-    if is_bt and job.actuals is not None:
-        actuals = job.actuals
-        hist_df = df.iloc[:-horizon] if len(df) > horizon else df
-    else:
-        hist_df = df
+        interval_bounds = result.get_interval(ui_config.interval_coverage)
+        if interval_bounds is not None:
+            lower, upper = interval_bounds
+            fc_display = {
+                "point": result.point[0] if result.point.ndim == 2 else result.point,
+                "q_low": lower[0] if lower.ndim == 2 else lower,
+                "q_high": upper[0] if upper.ndim == 2 else upper,
+            }
+        else:
+            fc_display = {
+                "point": result.point[0] if result.point.ndim == 2 else result.point,
+                "q_low": result.point[0] if result.point.ndim == 2 else result.point,
+                "q_high": result.point[0] if result.point.ndim == 2 else result.point,
+            }
 
-    st.plotly_chart(plot_forecast(hist_df, future_dates, fc_display, interval_label, actuals=actuals), use_container_width=True)
+        future_dates = result.future_index
+        actuals = None
+        is_bt = bool(meta.get("backtest_mode", False))
+        if is_bt and job.actuals is not None:
+            actuals = job.actuals
+            hist_df = df.iloc[:-horizon] if len(df) > horizon else df
+        else:
+            hist_df = df
 
-    st.markdown("#### Forecast summary")
-    for line in explain_forecast_results(prof["targets"][primary], pd.DataFrame({"Forecast": fc_display["point"]}), meta):
-        st.markdown(f"- {line}")
+        st.plotly_chart(plot_forecast(hist_df, future_dates, fc_display, interval_label, actuals=actuals), use_container_width=True)
 
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.markdown("##### Forecast summary")
+        for line in explain_forecast_results(prof["targets"][primary], pd.DataFrame({"Forecast": fc_display["point"]}), meta):
+            st.markdown(f"- {line}")
 
-    # Forecast table and download
-    head_col, dl_col = st.columns([3, 1])
-    head_col.markdown("#### Forecast table")
+        # Forecast table and download
+        head_col, dl_col = st.columns([3, 1])
+        head_col.markdown("##### Forecast table")
 
-    # Build display dataframe
-    display_df = pd.DataFrame({
-        "Date": future_dates,
-        "Forecast": fc_display["point"],
-        lo_col: fc_display["q_low"],
-        hi_col: fc_display["q_high"],
-        "Model": result.model_key,
-        "Run": meta["run_timestamp_utc"],
-    })
-    if actuals is not None:
-        display_df["Actual"] = actuals
-        display_df["AbsError"] = np.abs(display_df["Actual"] - display_df["Forecast"])
-        denom = np.where(np.abs(display_df["Actual"]) < 1e-8, np.nan, np.abs(display_df["Actual"]))
-        display_df["APE_%"] = np.abs((display_df["Actual"] - display_df["Forecast"]) / denom) * 100
-        display_df["InInterval"] = (display_df["Actual"] >= display_df[lo_col]) & (display_df["Actual"] <= display_df[hi_col])
+        display_df = pd.DataFrame({
+            "Date": future_dates,
+            "Forecast": fc_display["point"],
+            lo_col: fc_display["q_low"],
+            hi_col: fc_display["q_high"],
+            "Model": model_key,
+            "Run": meta.get("run_timestamp_utc", "N/A"),
+        })
+        if actuals is not None:
+            display_df["Actual"] = actuals
+            display_df["AbsError"] = np.abs(display_df["Actual"] - display_df["Forecast"])
+            denom = np.where(np.abs(display_df["Actual"]) < 1e-8, np.nan, np.abs(display_df["Actual"]))
+            display_df["APE_%"] = np.abs((display_df["Actual"] - display_df["Forecast"]) / denom) * 100
+            display_df["InInterval"] = (display_df["Actual"] >= display_df[lo_col]) & (display_df["Actual"] <= display_df[hi_col])
 
-    dl_col.download_button("Download CSV", data=display_df.to_csv(index=False).encode(), file_name=f"{result.model_key}_forecast.csv", mime="text/csv", use_container_width=True)
-    st.dataframe(display_df, use_container_width=True, height=280)
+        dl_col.download_button("Download CSV", data=display_df.to_csv(index=False).encode(), file_name=f"{model_key}_forecast.csv", mime="text/csv", use_container_width=True)
+        st.dataframe(display_df, use_container_width=True, height=280)
 
-    st.caption(f"Run: {meta['run_timestamp_utc']} · Context: {meta['ctx_used']:,} pts · Horizon: {meta['horizon']} · Interval: {interval_label} · Model: {result.model_key} ({result.checkpoint_id})")
+    st.caption(f"Horizon: {meta['horizon']} · Interval: {interval_label} · Models: {', '.join(selected_models)}")
 
 
 def render_tab_evaluation(ui_config: ForecastConfigUI) -> None:
@@ -958,6 +942,97 @@ def render_tab_evaluation(ui_config: ForecastConfigUI) -> None:
                 st.plotly_chart(plot_error_distribution(fdf), use_container_width=True)
 
 
+def render_tab_comparison(selected_models: list[str]) -> None:
+    st.markdown("### 5. Model Comparison")
+    jobs = st.session_state.get("forecast_jobs", {})
+    meta = st.session_state.get("run_metadata", {})
+
+    if not jobs or len(selected_models) < 2:
+        st.info("Select at least 2 models and run forecasts to compare.")
+        return
+
+    horizon = meta.get("horizon", 30)
+    future_dates = None
+    for m in selected_models:
+        if m in jobs:
+            future_dates = jobs[m].result.future_index
+            break
+
+    if future_dates is None:
+        st.warning("No forecast data available.")
+        return
+
+    # Overlay all model forecasts
+    st.markdown("#### Forecast overlay")
+    fig = go.Figure()
+
+    # Add historical data
+    df = st.session_state.df
+    hist_col = "y" if "y" in df.columns else df.columns[1]
+    fig.add_trace(go.Scatter(
+        x=df["ds"], y=df[hist_col], mode="lines", name="Historical",
+        line=dict(color="#6366f1", width=2.2)
+    ))
+
+    colors = ["#111827", "#dc2626", "#059669", "#7c3aed", "#ea580c", "#0891b2"]
+    for i, model_key in enumerate(selected_models):
+        if model_key not in jobs:
+            continue
+        job = jobs[model_key]
+        result = job.result
+        interval_bounds = result.get_interval(0.8)
+        if interval_bounds is None:
+            continue
+        lower, upper = interval_bounds
+        point = result.point[0] if result.point.ndim == 2 else result.point
+        lower = lower[0] if lower.ndim == 2 else lower
+        upper = upper[0] if upper.ndim == 2 else upper
+
+        color = colors[i % len(colors)]
+        fig.add_trace(go.Scatter(
+            x=future_dates, y=point, mode="lines", name=model_key,
+            line=dict(color=color, width=2.5)
+        ))
+        fig.add_trace(go.Scatter(
+            x=future_dates, y=upper, mode="lines", line=dict(width=0),
+            showlegend=False, hoverinfo="skip"
+        ))
+        fig.add_trace(go.Scatter(
+            x=future_dates, y=lower, mode="lines", fill="tonexty",
+            name=f"{model_key} interval", line=dict(width=0),
+            fillcolor=f"rgba({int(color[1:3], 16)},{int(color[3:5], 16)},{int(color[5:7], 16)},0.1)"
+        ))
+
+    if len(future_dates) > 0:
+        fig.add_vline(x=future_dates[0], line_dash="dot", line_color="#94a3b8")
+    fig = style_figure(fig, f"Model comparison (horizon={horizon})", 520, "Value")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Side-by-side forecast tables
+    st.markdown("#### Side-by-side forecasts")
+    for model_key in selected_models:
+        if model_key not in jobs:
+            continue
+        job = jobs[model_key]
+        result = job.result
+        interval_bounds = result.get_interval(0.8)
+        if interval_bounds is None:
+            continue
+        lower, upper = interval_bounds
+        point = result.point[0] if result.point.ndim == 2 else result.point
+        lower = lower[0] if lower.ndim == 2 else lower
+        upper = upper[0] if upper.ndim == 2 else upper
+
+        st.markdown(f"##### {model_key}")
+        display_df = pd.DataFrame({
+            "Date": future_dates,
+            "Forecast": point,
+            "Lower_80": lower,
+            "Upper_80": upper,
+        })
+        st.dataframe(display_df, use_container_width=True, height=200)
+
+
 def main() -> None:
     st.set_page_config(page_title="Multi-Model Forecasting Workbench", layout="wide", initial_sidebar_state="expanded")
     st.markdown(CSS, unsafe_allow_html=True)
@@ -973,12 +1048,20 @@ def main() -> None:
 
     ui_config, data_source = render_sidebar(st.session_state.profile_results)
 
-    st.markdown('<div class="small-note"><span class="step-chip">1 Data</span><span class="step-chip">2 Diagnostics</span><span class="step-chip">3 Forecast</span><span class="step-chip">4 Evaluation</span></div>', unsafe_allow_html=True)
-    tab1, tab2, tab3, tab4 = st.tabs(["Data", "Diagnostics", "Forecast", "Evaluation"])
+    # Get selected models from sidebar
+    service: ForecastingService = st.session_state.service
+    all_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=True)
+    model_keys = [m["model_key"] for m in all_models]
+    default_models = ["timesfm_2_5"] if "timesfm_2_5" in model_keys else [model_keys[0]]
+    selected_models = st.session_state.get("selected_models", default_models)
+
+    st.markdown('<div class="small-note"><span class="step-chip">1 Data</span><span class="step-chip">2 Diagnostics</span><span class="step-chip">3 Forecast</span><span class="step-chip">4 Evaluation</span><span class="step-chip">5 Comparison</span></div>', unsafe_allow_html=True)
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Data", "Diagnostics", "Forecast", "Evaluation", "Comparison"])
     with tab1: render_tab_data(data_source, ui_config)
     with tab2: render_tab_diagnostics()
-    with tab3: render_tab_forecast(ui_config)
-    with tab4: render_tab_evaluation(ui_config)
+    with tab3: render_tab_forecast(ui_config, selected_models)
+    with tab4: render_tab_evaluation(ui_config, selected_models)
+    with tab5: render_tab_comparison(selected_models)
 
 
 if __name__ == "__main__":
