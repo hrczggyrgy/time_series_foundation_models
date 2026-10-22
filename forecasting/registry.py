@@ -343,14 +343,28 @@ class ModelRegistry:
         if entry.license_policy == LicensePolicy.RESEARCH and not self.is_acknowledged(model_key):
             raise LicenseAcknowledgmentRequiredError(model_key, entry.capabilities.license_notice)
 
+        # Create runtime config with model_key for adapters that need it (e.g., Timestral)
+        adapted_runtime = runtime_config
+        if model_key.startswith("timestral_"):
+            extra = dict(runtime_config.extra)
+            extra["model_key"] = model_key
+            adapted_runtime = RuntimeConfig(
+                device=runtime_config.device,
+                dtype=runtime_config.dtype,
+                compile=runtime_config.compile,
+                compile_mode=runtime_config.compile_mode,
+                per_core_batch_size=runtime_config.per_core_batch_size,
+                extra=extra,
+            )
+
         # Return cached instance if compatible
-        cache_key = self._cache_key(model_key, runtime_config)
+        cache_key = self._cache_key(model_key, adapted_runtime)
         if cache_key in self._instances:
             return self._instances[cache_key]
 
         # Lazy load adapter class
         adapter = self._load_adapter_class(entry.adapter_class)
-        adapter.load(runtime_config)
+        adapter.load(adapted_runtime)
         self._instances[cache_key] = adapter
         return adapter
 

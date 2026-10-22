@@ -19,4 +19,4 @@ tfc-t0[torch]>=0.6.0,<1.0
 
 # Restricted foundation models (require license acknowledgment)
 # timesfm[torch]>=3.0.0,<4.0  # TimesFM 3.0 (non-commercial weights)
-# timestral>=0.1.0,<1.0       # Timestral family (Modified MIT, $20M revenue cap)
+timestral @ git+https://github.com/mistralai/timestral@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff
