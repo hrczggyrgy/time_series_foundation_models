@@ -161,15 +161,13 @@ class TimestralAdapter(BaseAdapter):
         return model
 
     def _predict_impl(self, request: ForecastRequest, model: Any) -> ForecastResult:
+        import torch
+
         horizon = request.horizon
         n_targets = request.n_targets
         n_history = request.n_history
 
         target_history = self._ensure_2d_targets(request.target_history)  # [targets, history]
-
-        # Timestral forecast expects 1D context for univariate, or list for batch
-        # For multivariate, we need to call forecast for each target separately
-        # (Timestral's API forecasts one series at a time)
 
         all_points = []
         all_quantiles = []
@@ -183,28 +181,26 @@ class TimestralAdapter(BaseAdapter):
             # Get forecast
             forecast = model.forecast(context, prediction_length=horizon)
 
-            # Extract median (point) and quantiles
-            point = forecast.median  # [horizon]
+            # Extract median (point): [1, 1, horizon] -> [horizon]
+            point = forecast.median.squeeze().cpu().numpy()
+            if point.ndim == 0:
+                point = np.array([point])
             all_points.append(point)
 
             # Get quantiles at requested levels
             q_vals = []
             for q in requested_levels:
                 try:
-                    lower, upper = forecast.quantile(float(q))
-                    # quantile returns (lower, upper) for central interval
-                    # We need the actual quantile value. Check API...
-                    # Based on HF example: forecast.quantile(0.1) returns lower bound
-                    # forecast.quantile(0.9) returns upper bound
-                    # For median (0.5), it should return the median
-                    if q <= 0.5:
-                        q_vals.append(lower)
-                    else:
-                        q_vals.append(upper)
+                    q_tensor = forecast.quantile(float(q))  # [1, 1, horizon]
+                    q_val = q_tensor.squeeze().cpu().numpy()
+                    if q_val.ndim == 0:
+                        q_val = np.array([q_val])
+                    q_vals.append(q_val)
                 except Exception:
                     # Fallback: use median
                     q_vals.append(point)
 
+            # q_vals is list of [horizon] arrays
             q_arr = np.column_stack(q_vals)  # [horizon, n_quantiles]
             all_quantiles.append(q_arr)
 
