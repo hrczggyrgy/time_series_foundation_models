@@ -31,13 +31,13 @@ class T0GammaAdapter(BaseAdapter):
             supports_cuda=True,
             supports_mps=False,  # UNVERIFIED for torch; MLX runtime available separately
             supports_multivariate=True,
-            supports_past_covariates=True,
-            supports_known_future_covariates=True,
+            supports_past_covariates=False,  # Not yet implemented - requires context+horizon alignment
+            supports_known_future_covariates=False,  # Not yet implemented - requires context+horizon alignment
             supports_group_forecasting=True,
             native_quantile_levels=(
-                0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
-                0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
-            ),  # 21 quantiles
+                0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45,
+                0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99
+            ),  # 21 quantiles: P01, P05-P95 in 5% increments, P99
             max_context_length=512,
             min_context_length=1,
             max_horizon=1024,
@@ -182,15 +182,9 @@ class T0GammaAdapter(BaseAdapter):
         )
         warnings.extend(q_warnings)
 
-        # Interpolate to requested levels if different from native
+        # T0 returns quantiles at the exact requested levels - no interpolation needed
+        # The model handles interpolation internally based on its trained quantiles
         requested_levels = np.array(request.quantile_levels)
-        native_levels = np.array(self.capabilities.native_quantile_levels)
-
-        if not np.array_equal(requested_levels, native_levels):
-            quantiles = self._interpolate_quantiles(quantiles, native_levels, requested_levels)
-            warnings.append(
-                f"Interpolated quantiles from native {len(native_levels)} levels to requested {len(requested_levels)} levels"
-            )
 
         return self._build_result(
             point=point,
@@ -202,33 +196,9 @@ class T0GammaAdapter(BaseAdapter):
             warnings=warnings,
             metadata={
                 "device": str(device),
-                "native_quantile_levels": native_levels.tolist(),
+                "native_quantile_levels": self.capabilities.native_quantile_levels,
             },
         )
-
-    def _interpolate_quantiles(
-        self, quantiles: np.ndarray, from_levels: np.ndarray, to_levels: np.ndarray
-    ) -> np.ndarray:
-        """Interpolate quantiles from one set of levels to another."""
-        n_targets, horizon, _ = quantiles.shape
-        result = np.empty((n_targets, horizon, len(to_levels)))
-
-        for t in range(n_targets):
-            for h in range(horizon):
-                q_vals = quantiles[t, h]
-                for i, q in enumerate(to_levels):
-                    if q <= from_levels[0]:
-                        result[t, h, i] = q_vals[0]
-                    elif q >= from_levels[-1]:
-                        result[t, h, i] = q_vals[-1]
-                    else:
-                        idx = np.searchsorted(from_levels, q)
-                        q_low, q_high = from_levels[idx - 1], from_levels[idx]
-                        v_low, v_high = q_vals[idx - 1], q_vals[idx]
-                        weight = (q - q_low) / (q_high - q_low)
-                        result[t, h, i] = v_low + weight * (v_high - v_low)
-
-        return result
 
 
 def create_t0_gamma_adapter() -> T0GammaAdapter:
