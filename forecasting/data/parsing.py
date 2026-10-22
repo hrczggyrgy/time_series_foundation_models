@@ -222,6 +222,8 @@ def prepare_dataframe(
 
     # Handle irregular frequency
     freq_before = infer_frequency_safe(data["ds"])
+    # Store raw frequency for date generation (preserves MS/ME, QS/QE, etc.)
+    raw_freq = pd.infer_freq(pd.DatetimeIndex(data["ds"]))
     if auto_fix and freq_before == "Irregular":
         rule = dominant_resample_rule(data["ds"])
         if rule:
@@ -237,6 +239,8 @@ def prepare_dataframe(
             data = rs.reset_index()
             prep_info["auto_resampled_to"] = rule
             prep_info["filled_missing_points"] = max(0, len(data) - before_len) + missing_before_fill
+            # Update raw_freq after resampling
+            raw_freq = rule
 
     # Fill any remaining missing values in target columns
     for col in target_cols:
@@ -250,6 +254,7 @@ def prepare_dataframe(
         if data[col].isna().any():
             raise ValueError(f"Unable to fill all missing values in target column '{col}'.")
 
+    prep_info["raw_frequency"] = raw_freq
     return data, prep_info
 
 
@@ -378,9 +383,18 @@ def build_future_dates(
     horizon: int,
     business_days_only: bool,
     freq_code: str,
+    raw_freq: str | None = None,
 ) -> pd.DatetimeIndex:
-    """Generate future timestamps based on inferred frequency."""
-    freq_code = canonical_freq(freq_code)
+    """Generate future timestamps based on inferred frequency.
+    
+    If raw_freq is provided (e.g., 'MS', 'ME', 'QS', 'QE', 'YS', 'YE'),
+    it preserves the original frequency semantics (start vs end).
+    """
+    # Use raw_freq if available to preserve start/end semantics
+    if raw_freq:
+        freq_code = raw_freq
+    else:
+        freq_code = canonical_freq(freq_code)
 
     if business_days_only and freq_code in ("D", "B"):
         return pd.bdate_range(start=last_date + pd.offsets.BDay(1), periods=horizon)
@@ -392,6 +406,18 @@ def build_future_dates(
         "D": pd.offsets.Day(1),
         "B": pd.offsets.BDay(1),
         "W": pd.offsets.Week(weekday=last_date.weekday()),
+        # Month start/end
+        "MS": pd.offsets.MonthBegin(1),
+        "ME": pd.offsets.MonthEnd(1),
+        # Quarter start/end
+        "QS": pd.offsets.QuarterBegin(1),
+        "QE": pd.offsets.QuarterEnd(1),
+        # Year start/end
+        "YS": pd.offsets.YearBegin(1),
+        "YE": pd.offsets.YearEnd(1),
+        "AS": pd.offsets.YearBegin(1),
+        "AE": pd.offsets.YearEnd(1),
+        # Legacy normalized codes (fallback to end)
         "M": pd.offsets.MonthEnd(1),
         "Q": pd.offsets.QuarterEnd(1),
         "A": pd.offsets.YearEnd(1),

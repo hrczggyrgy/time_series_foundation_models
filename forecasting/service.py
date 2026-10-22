@@ -167,11 +167,13 @@ class ForecastingService:
         history_index = df["ds"]
 
         freq = infer_frequency_safe(history_index)
+        raw_freq = parsed_data.prep_report.get("raw_frequency")
         future_dates = build_future_dates(
             last_date=history_index.iloc[-1],
             horizon=horizon,
             business_days_only=business_days_only,
             freq_code=freq,
+            raw_freq=raw_freq,
         )
 
         # Covariates
