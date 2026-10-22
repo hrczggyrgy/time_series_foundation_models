@@ -201,12 +201,17 @@ def prepare_dataframe(
     data = data.dropna(subset=[date_col] + target_cols).rename(columns={date_col: "ds"})
 
     # Normalize first target column to 'y' for internal consistency
+    # Keep track of original target column names for user-facing labels
+    original_target_cols = list(target_cols)
     if target_cols:
         primary_target = target_cols[0]
         if primary_target != "y":
             data = data.rename(columns={primary_target: "y"})
             # Update target_cols list for downstream use
             target_cols = ["y"] + target_cols[1:]
+
+    # Update numeric_cols to use normalized column names
+    numeric_cols = target_cols + past_covariate_cols + known_covariate_cols
 
     if data.empty:
         raise ValueError("No valid rows after parsing date and target columns.")

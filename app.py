@@ -81,7 +81,6 @@ class ForecastConfigUI:
     business_days_only: bool
     backtest_mode: bool
     n_backtest_windows: int
-    use_full_context: bool
     autopilot: bool
     auto_fix_data: bool
     license_policy: LicensePolicy
@@ -484,7 +483,9 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
     if model_info and model_info["license_policy"] == "research" and not model_info["is_acknowledged"]:
         st.sidebar.warning(f"⚠️ **License Acknowledgment Required**\n\n{model_info['license_notice']}")
         if st.sidebar.button("Acknowledge and Enable", type="primary"):
-            service.acknowledge_model(selected_model)
+            if "acknowledged_models" not in st.session_state:
+                st.session_state.acknowledged_models = set()
+            st.session_state.acknowledged_models.add(selected_model)
             st.rerun()
         st.sidebar.markdown("---")
 
@@ -520,7 +521,6 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
         business_days_only = st.checkbox("Business days only", value=False, help="Skip weekends for daily data.")
         backtest_mode = st.checkbox("Backtesting mode", value=True, help="Uses last horizon as holdout for accuracy metrics.")
         n_backtest_windows = st.slider("Rolling windows", 1, 5, 3, help="More windows = more robust but slower.")
-        use_full_context = st.checkbox("Use full 16k context", value=False, help="Slower on CPU.")
 
     st.sidebar.markdown("---")
     if st.sidebar.button("Reset session", use_container_width=True):
@@ -545,7 +545,7 @@ Quantiles: {len(caps['native_quantiles'])} native{exp_str}""")
     return ForecastConfigUI(
         horizon=horizon, interval_coverage=interval_coverage,
         business_days_only=business_days_only, backtest_mode=backtest_mode,
-        n_backtest_windows=n_backtest_windows, use_full_context=use_full_context,
+        n_backtest_windows=n_backtest_windows,
         autopilot=autopilot, auto_fix_data=auto_fix_data,
         license_policy=selected_policy, model_key=selected_model,
     ), data_source
@@ -747,7 +747,7 @@ def render_tab_forecast(ui_config: ForecastConfigUI) -> None:
                 runtime = RuntimeConfig(
                     device="auto",
                     dtype="float32",
-                    compile=ui_config.use_full_context,  # Use compile as proxy for full context
+                    compile=False,  # Compilation handled by model adapters if needed
                 )
 
                 # Get session policy and acknowledgments
