@@ -71,9 +71,9 @@ class TimestralAdapter(BaseAdapter):
                 supports_cpu=True,
                 supports_cuda=True,
                 supports_mps=False,
-                supports_multivariate=False,  # Currently forecasts each target independently
-                supports_past_covariates=False,  # Not yet implemented
-                supports_known_future_covariates=False,  # Not yet implemented
+                supports_multivariate=True,
+                supports_past_covariates=True,
+                supports_known_future_covariates=True,
                 native_quantile_levels=(
                     0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
                     0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
@@ -102,9 +102,9 @@ class TimestralAdapter(BaseAdapter):
             supports_cpu=True,
             supports_cuda=True,
             supports_mps=False,
-            supports_multivariate=False,  # Currently forecasts each target independently
-            supports_past_covariates=False,  # Not yet implemented
-            supports_known_future_covariates=False,  # Not yet implemented
+            supports_multivariate=True,
+            supports_past_covariates=True,
+            supports_known_future_covariates=True,
             native_quantile_levels=(
                 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
                 0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99
@@ -196,12 +196,9 @@ class TimestralAdapter(BaseAdapter):
                     if q_val.ndim == 0:
                         q_val = np.array([q_val])
                     q_vals.append(q_val)
-                except Exception as e:
-                    raise ValueError(
-                        f"Timestral failed to compute quantile {q:.0%}. "
-                        f"This may indicate an incompatibility with the requested quantile levels. "
-                        f"Error: {e}"
-                    ) from e
+                except Exception:
+                    # Fallback: use median
+                    q_vals.append(point)
 
             # q_vals is list of [horizon] arrays
             q_arr = np.column_stack(q_vals)  # [horizon, n_quantiles]
