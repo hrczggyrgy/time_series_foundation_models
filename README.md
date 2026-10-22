@@ -1,12 +1,3 @@
----
-title: Multi-Model Time-Series Forecasting Workbench
-emoji: 📈
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-pinned: false
----
-
 # 📈 Multi-Model Time-Series Forecasting Workbench
 
 ![Multi-Model Forecasting Workbench](https://raw.githubusercontent.com/hrczggyrgy/time_series_foundation_models/master/docs/header/header.jpeg)
