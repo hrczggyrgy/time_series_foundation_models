@@ -288,7 +288,7 @@ class ForecastingService:
         n_windows: int = 3,
         runtime_config: RuntimeConfig | None = None,
         business_days_only: bool = False,
-        quantile_levels: tuple[float, ...] = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
+        quantile_levels: tuple[float, ...] = (0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95),
         policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
         acknowledged: set[str] | None = None,
     ) -> ForecastJob:
