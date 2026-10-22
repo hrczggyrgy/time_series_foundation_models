@@ -1,0 +1,116 @@
+[project]
+name = "timesfm-dashboard"
+version = "0.2.0"
+description = "Multi-model time-series forecasting workbench"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "hrczggyrgy", email = "hrczggyrgy@users.noreply.github.com"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = [
+    # Core UI & data
+    "streamlit>=1.28.0,<2.0",
+    "pandas>=2.0.0,<3.0",
+    "numpy>=1.24.0,<2.0",
+
+    # Visualization
+    "plotly>=5.14.0,<6.0",
+
+    # Statistical analysis
+    "scipy>=1.10.0,<2.0",
+    "statsmodels>=0.14.0,<1.0",
+
+    # Deep learning (base)
+    "torch>=2.4.0",
+]
+
+[project.optional-dependencies]
+# Permissive foundation models (Apache-2.0 weights)
+permissive = [
+    "timesfm[torch]==2.0.2",      # TimesFM 2.5
+    "tfc-t0[torch]>=0.6.0,<1.0",  # t0-gamma
+]
+
+# Restricted foundation models (require license acknowledgment)
+restricted = [
+    "timesfm[torch]>=3.0.0,<4.0",  # TimesFM 3.0 (non-commercial weights)
+    "timestral>=0.1.0,<1.0",       # Timestral family (Modified MIT, $20M revenue cap)
+]
+
+# All model backends
+all-models = [
+    "timesfm[torch]==2.0.2",
+    "timesfm[torch]>=3.0.0,<4.0",
+    "tfc-t0[torch]>=0.6.0,<1.0",
+    "timestral>=0.1.0,<1.0",
+]
+
+# Development & testing
+dev = [
+    "pytest>=7.4.0,<9.0",
+    "pytest-cov>=4.1.0,<5.0",
+    "pytest-mock>=3.12.0,<4.0",
+    "ruff>=0.5.0,<1.0",
+    "mypy>=1.10.0,<2.0",
+    "pre-commit>=3.6.0,<4.0",
+]
+
+# Documentation
+docs = [
+    "mkdocs>=1.5.0,<2.0",
+    "mkdocs-material>=9.5.0,<10.0",
+    "mkdocstrings[python]>=0.25.0,<1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short -q"
+filterwarnings = [
+    "ignore::FutureWarning",
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "T20", # flake8-print
+]
+ignore = [
+    "S101", # assert in tests
+    "T201", # print in non-test code (allowed in Streamlit app)
+]
+per-file-ignores = { "app.py" = ["T201"], "tests/*" = ["S101", "T201"] }
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+strict = false
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"

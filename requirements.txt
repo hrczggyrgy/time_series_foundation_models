@@ -1,21 +1,22 @@
-# TimesFM 2.5 Forecasting Dashboard
-# Python 3.10+
-
 # Core UI & data
-streamlit>=1.28.0
-pandas>=2.0.0
-numpy>=1.24.0
+streamlit>=1.28.0,<2.0
+pandas>=2.0.0,<3.0
+numpy>=1.24.0,<2.0
 
 # Visualization
-plotly>=5.14.0
+plotly>=5.14.0,<6.0
 
-# Deep learning & forecasting
-torch>=2.0.0
-timesfm>=0.0.7
+# Deep learning
+torch>=2.4.0
 
 # Statistical analysis
-scipy>=1.10.0
-statsmodels>=0.14.0
+scipy>=1.10.0,<2.0
+statsmodels>=0.14.0,<1.0
 
-# Optional: for GPU support (uncomment if using CUDA)
-# torch-cuda (install via: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118)
+# Permissive foundation models (Apache-2.0 weights)
+timesfm[torch]==2.0.2
+tfc-t0[torch]>=0.6.0,<1.0
+
+# Restricted foundation models (require license acknowledgment)
+# timesfm[torch]>=3.0.0,<4.0  # TimesFM 3.0 (non-commercial weights)
+# timestral>=0.1.0,<1.0       # Timestral family (Modified MIT, $20M revenue cap)

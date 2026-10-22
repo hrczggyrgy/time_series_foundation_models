@@ -9,6 +9,9 @@ env/
 ENV/
 .venv/
 
+# secret
+.HF_TOKEN
+
 # Distribution / Packaging
 .Python
 build/
