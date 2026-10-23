@@ -102,7 +102,7 @@ def test_comparison_service_compare_models_insufficient_data():
 
     with pytest.raises(ValueError, match="Insufficient data for comparison"):
         service.compare_models(
-            model_keys=["naive"],  # Use naive which doesn't require weights
+            model_keys=["stl"],  # Use STL, which does not require model weights
             parsed_data=parsed_data,
             horizon=10,
         )
@@ -136,7 +136,7 @@ def test_comparison_service_progress_callback():
 
     try:
         service.compare_models(
-            model_keys=["naive"],
+            model_keys=["stl"],
             parsed_data=parsed_data,
             horizon=10,
             progress_callback=progress_callback,

@@ -29,6 +29,15 @@ def test_optional_model_entries_are_registered_with_runtime_requirements():
     assert registry.get_entry("moirai").required_module == "uni2ts"
 
 
+def test_stl_is_registered_as_the_only_builtin_baseline():
+    registry = ModelRegistry()
+
+    assert registry.get_entry("stl") is not None
+    assert registry.get_entry("stl").adapter_class == "forecasting.adapters.stl.STLAdapter"
+    assert registry.get_entry("naive") is None
+    assert registry.get_entry("seasonal_naive") is None
+
+
 def test_deployment_profile_hides_models_from_other_profiles(monkeypatch):
     registry = ModelRegistry()
     monkeypatch.setenv("TSFM_MODEL_PROFILE", "moirai")

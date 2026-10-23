@@ -216,26 +216,25 @@ out = model.predict(context, horizon=64, quantile_levels=[0.1, 0.5, 0.9], future
 
 ---
 
-## 6. Naive Baselines (Zero-Dependency)
+## 6. STL Decomposition Baseline
 
 | Field | Value |
 |-------|-------|
-| **Model Keys** | `naive`, `seasonal_naive` |
+| **Model Key** | `stl` |
 | **Checkpoint ID** | N/A (algorithmic) |
-| **Runtime Package** | None (stdlib + numpy/pandas) |
-| **Supported Devices** | Any (pure Python) |
-| **Input/Output Shapes** | Input: `[history]` → Output: point `[horizon]`, quantiles: **N/A** (deterministic) |
-| **Context Limit** | N/A |
+| **Runtime Package** | `statsmodels` |
+| **Supported Devices** | CPU |
+| **Input/Output Shapes** | Input: `[targets, history]` → Output: point `[targets, horizon]`, quantiles: **N/A** (deterministic) |
+| **Context Limit** | At least 4 observations |
 | **Horizon Behavior** | Any |
 | **Native Quantile Levels** | None (deterministic point forecasts only) |
 | **Covariate Support** | None |
 | **Source-Code License** | Apache-2.0 (application code) |
 | **Weights License** | N/A |
-| **Verification Date** | 2026-10-22 |
-| **Smoke-Test Status** | **UNVERIFIED** (to be implemented) |
+| **Verification Date** | 2026-10-23 |
+| **Smoke-Test Status** | Unit-tested |
 
-**Naive:** Last observed value repeated for horizon  
-**Seasonal Naive:** Value from same seasonal period repeated (requires frequency inference)
+STL decomposes each target independently into trend, seasonal, and residual components. The forecast extrapolates a linear fit to the recent trend component and repeats the last seasonal cycle. Seasonal period is inferred from the timestamp frequency (for example, 7 for daily and 12 for monthly data); the period is reduced when needed to fit at least two cycles in the history. If frequency cannot be inferred, a weekly period is used with a warning. Forecasts are deterministic and do not include prediction intervals.
 
 ---
 

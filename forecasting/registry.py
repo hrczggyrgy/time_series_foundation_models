@@ -388,58 +388,30 @@ class ModelRegistry:
             )
         )
 
-        # Naive baseline — Permissive (no weights)
+        # STL decomposition baseline — deterministic and dependency-light
         self.register(
             ModelRegistryEntry(
-                model_key="naive",
-                display_name="Naive (Last Value)",
-                adapter_class="forecasting.adapters.naive.NaiveAdapter",
+                model_key="stl",
+                display_name="STL Decomposition",
+                adapter_class="forecasting.adapters.stl.STLAdapter",
                 capabilities=ModelCapabilities(
-                    model_key="naive",
-                    display_name="Naive (Last Value)",
+                    model_key="stl",
+                    display_name="STL Decomposition",
                     checkpoint_id="",
                     checkpoint_revision="",
                     supports_cpu=True,
                     supports_cuda=False,
                     supports_mps=False,
-                    supports_multivariate=False,
+                    supports_multivariate=True,
                     supports_past_covariates=False,
                     supports_known_future_covariates=False,
                     native_quantile_levels=(),
                     max_context_length=None,
-                    min_context_length=1,
+                    min_context_length=4,
                     max_horizon=None,
                     compiles_context_horizon=False,
                     supports_batch_inference=True,
-                    license_notice="No model weights — algorithmic baseline.",
-                ),
-            )
-        )
-
-        # Seasonal Naive baseline — Permissive (no weights)
-        self.register(
-            ModelRegistryEntry(
-                model_key="seasonal_naive",
-                display_name="Seasonal Naive",
-                adapter_class="forecasting.adapters.naive.SeasonalNaiveAdapter",
-                capabilities=ModelCapabilities(
-                    model_key="seasonal_naive",
-                    display_name="Seasonal Naive",
-                    checkpoint_id="",
-                    checkpoint_revision="",
-                    supports_cpu=True,
-                    supports_cuda=False,
-                    supports_mps=False,
-                    supports_multivariate=False,
-                    supports_past_covariates=False,
-                    supports_known_future_covariates=False,
-                    native_quantile_levels=(),
-                    max_context_length=None,
-                    min_context_length=2,  # Need at least one full season
-                    max_horizon=None,
-                    compiles_context_horizon=False,
-                    supports_batch_inference=True,
-                    license_notice="No model weights — algorithmic baseline.",
+                    license_notice="No model weights — statsmodels STL decomposition baseline.",
                 ),
             )
         )

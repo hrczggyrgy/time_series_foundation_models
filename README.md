@@ -35,10 +35,9 @@ A modular zero-shot forecasting workbench with unified probabilistic outputs, le
 | Timestral 28M | 28M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
 | Timestral 123M | 123M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
 | Timestral 5M | 5M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
-| Naive | — | — | No | No | Any | Any | None |
-| Seasonal Naive | — | — | No | No | Any | Any | None |
+| STL Decomposition | — | Apache-2.0 (code) | Yes¹ | No | At least 4 | Any | None |
 
-¹ Chronos handles multiple target series independently. ² Covariate forecasting is not implemented in this adapter.
+¹ STL models each target independently; it extrapolates the decomposed trend and repeats the final seasonal cycle. It provides deterministic point forecasts without prediction intervals.
 
 The default `timesfm25` profile includes TimesFM 2.5, TiRex-2, and Chronos. TimesFM 3.0 and Moirai are separate deployment profiles because their Python package requirements conflict with the default image. MOMENT is not offered for zero-shot forecasting: its upstream forecasting head requires fine-tuning. Lag-Llama is not currently integrated.
 
@@ -214,7 +213,7 @@ The app auto-detects CUDA/MPS/CPU.
 │   │   ├── moirai.py         # Moirai profile
 │   │   ├── timestral.py      # Timestral 5M/28M/123M/209M
 │   │   ├── t0.py             # t0-gamma
-│   │   └── naive.py          # Naive / Seasonal Naive
+│   │   └── stl.py            # STL decomposition baseline
 │   │
 │   ├── data/
 │   │   └── parsing.py        # CSV prep, validation, freq inference, date gen
@@ -243,7 +242,8 @@ The app auto-detects CUDA/MPS/CPU.
 **Application code**: Apache-2.0 (see `LICENSE`)
 
 **Model weights** — see table above:
-- Apache-2.0: TimesFM 2.5, TiRex-2, Chronos, t0-gamma, Naive baselines
+- Apache-2.0: TimesFM 2.5, TiRex-2, Chronos, t0-gamma
+- STL baseline uses statsmodels under the project's Apache-2.0 application license
 - Non-commercial v1.0: TimesFM 3.0 (self-hosted only; commercial via BigQuery ML)
 - Modified MIT ($20M revenue cap): Timestral family (commercial license from Mistral AI)
 
