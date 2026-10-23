@@ -17,7 +17,7 @@ pinned: false
 
 **Live demo:** https://huggingface.co/spaces/hrczggyorgy/TSFMs_forecasting
 
-A modular, extensible zero-shot forecasting workbench supporting 7 foundation models with unified probabilistic outputs, leakage-free backtesting, and model license notices.
+A modular zero-shot forecasting workbench with unified probabilistic outputs, leakage-free backtesting, and model license notices. The model selector only shows models installed for the active runtime profile.
 
 ---
 
@@ -26,8 +26,11 @@ A modular, extensible zero-shot forecasting workbench supporting 7 foundation mo
 | Model | Parameters | License | Multivariate | Covariates | Context | Horizon | Quantiles |
 |-------|------------|---------|--------------|------------|---------|---------|-----------|
 | TimesFM 2.5 | 200M | Apache-2.0 | No | Future-only | 16k | 512 | 9 (0.1-0.9) |
-| TimesFM 3.0 | 330M | Non-commercial v1.0 | Yes | Full | 32k+ | 1024 | 9 (0.1-0.9) |
-| t0-gamma | 100M+ | Apache-2.0 | Yes | Full | 512 | 1024 | 21 (0.01-0.99) |
+| TiRex-2 | 82M active | Apache-2.0 | Yes | Past and future-known | 32k | 1024 | 9 (0.1-0.9) |
+| Chronos-T5 Small | 20M | Apache-2.0 | Yes¹ | No | 512 | Model-dependent | Sampled |
+| TimesFM 3.0 | 330M | Non-commercial v1.0 | Yes | Past and future-known | 15,360 | 1024 | 9 (0.1-0.9) |
+| Moirai 1.1 Small | 14M | See model card | No | No | 2k | Configured horizon | Sampled |
+| t0-gamma | 100M+ | Apache-2.0 | Yes | No² | 512 | 1024 | 21 (0.01-0.99) |
 | Timestral 209M | 209M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
 | Timestral 28M | 28M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
 | Timestral 123M | 123M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
@@ -35,16 +38,20 @@ A modular, extensible zero-shot forecasting workbench supporting 7 foundation mo
 | Naive | — | — | No | No | Any | Any | None |
 | Seasonal Naive | — | — | No | No | Any | Any | None |
 
+¹ Chronos handles multiple target series independently. ² Covariate forecasting is not implemented in this adapter.
+
+The default `timesfm25` profile includes TimesFM 2.5, TiRex-2, and Chronos. TimesFM 3.0 and Moirai are separate deployment profiles because their Python package requirements conflict with the default image. MOMENT is not offered for zero-shot forecasting: its upstream forecasting head requires fine-tuning. Lag-Llama is not currently integrated.
+
 ---
 
 ## Features
 
 ### Core Forecasting
 - Zero-shot forecasting — no training required, works out-of-the-box
-- Unified probabilistic interface — all models return calibrated quantiles (not just point forecasts)
+- Unified probabilistic interface — supported models provide quantiles from native outputs or forecast samples
 - Multi-model comparison — run identical backtests across models with controlled context/horizon
-- Multivariate support — t0-gamma supports joint forecasting (experimental)
-- Covariate support — planned feature (not yet implemented in current adapters)
+- Multivariate support — available for TiRex-2 and TimesFM 3.0; other adapters may forecast targets independently
+- Covariates — supported by TiRex-2 and TimesFM 3.0
 
 ### Data & Diagnostics
 - CSV upload with auto column detection (date + multiple targets)
@@ -111,6 +118,7 @@ docker run -d \
 ### Hugging Face Spaces
 
 Deploy directly from this repo — the Space auto-builds from the `Dockerfile`.
+The GitHub Actions `workflow_dispatch` form can select `timesfm25` (default), `timesfm3`, or `moirai`. The selected profile uses its corresponding Dockerfile and requirements file for that deployment.
 
 ---
 
@@ -126,7 +134,10 @@ Deploy directly from this repo — the Space auto-builds from the `Dockerfile`.
 - RMSE aggregation uses mean of window-level RMSEs, not pooled RMSE across all observations.
 
 ### Model Availability
-- **TimesFM 3.0**: Adapter is a stub only - not yet implemented. Model weights require separate non-commercial license.
+- **TimesFM 3.0**: Available through the separate profile only. Self-hosted weights are non-commercial/non-production; see the model license before use.
+- **Moirai**: Available through the separate Uni2TS profile, which uses PyTorch <2.5.
+- **MOMENT**: Not included in the forecast selector because its upstream forecasting head must be fine-tuned before forecasting.
+- **Lag-Llama**: Not integrated; the project does not currently provide a maintained, versioned inference API for this adapter.
 
 ### UI Capabilities
 - Current UI selects one target column and runs one model per forecast operation. Multi-model comparison requires running separate forecasts.
@@ -183,7 +194,9 @@ The app auto-detects CUDA/MPS/CPU.
 ├── app.py                    # Streamlit UI (orchestrator)
 ├── pyproject.toml            # Packaging & optional dependencies
 ├── requirements.txt          # Pinned deployment requirements
-├── Dockerfile                # Multi-stage Docker build
+├── Dockerfile                # Default TimesFM 2.5 profile
+├── Dockerfile.timesfm3       # Optional TimesFM 3.0 profile
+├── Dockerfile.moirai         # Optional Moirai/Uni2TS profile
 ├── .streamlit/config.toml    # Streamlit server config
 │
 ├── forecasting/              # Core forecasting library
@@ -195,7 +208,10 @@ The app auto-detects CUDA/MPS/CPU.
 │   ├── adapters/             # Model adapters (implement ForecastAdapter)
 │   │   ├── base.py           # BaseAdapter: quantile interp, crossing repair
 │   │   ├── timesfm25.py      # TimesFM 2.5
-│   │   ├── timesfm3.py       # TimesFM 3.0 (stub)
+│   │   ├── timesfm3.py       # TimesFM 3.0 profile
+│   │   ├── tirex2.py         # TiRex-2
+│   │   ├── chronos.py        # Chronos
+│   │   ├── moirai.py         # Moirai profile
 │   │   ├── timestral.py      # Timestral 5M/28M/123M/209M
 │   │   ├── t0.py             # t0-gamma
 │   │   └── naive.py          # Naive / Seasonal Naive
@@ -227,7 +243,7 @@ The app auto-detects CUDA/MPS/CPU.
 **Application code**: Apache-2.0 (see `LICENSE`)
 
 **Model weights** — see table above:
-- Apache-2.0: TimesFM 2.5, t0-gamma, Naive baselines
+- Apache-2.0: TimesFM 2.5, TiRex-2, Chronos, t0-gamma, Naive baselines
 - Non-commercial v1.0: TimesFM 3.0 (self-hosted only; commercial via BigQuery ML)
 - Modified MIT ($20M revenue cap): Timestral family (commercial license from Mistral AI)
 

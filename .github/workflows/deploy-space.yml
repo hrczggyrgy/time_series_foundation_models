@@ -4,6 +4,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      model_profile:
+        description: "Hugging Face image profile"
+        type: choice
+        options:
+          - timesfm25
+          - timesfm3
+          - moirai
+        default: timesfm25
+        required: true
 
 jobs:
   deploy:
@@ -12,6 +22,17 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select model profile
+        env:
+          MODEL_PROFILE: ${{ inputs.model_profile || 'timesfm25' }}
+        run: |
+          case "$MODEL_PROFILE" in
+            timesfm25) ;;
+            timesfm3) cp Dockerfile.timesfm3 Dockerfile ;;
+            moirai) cp Dockerfile.moirai Dockerfile ;;
+            *) echo "Unsupported model profile: $MODEL_PROFILE" >&2; exit 1 ;;
+          esac
 
       - name: Install the hf CLI
         run: |
@@ -37,4 +58,11 @@ jobs:
           --exclude "ui/*"
           --exclude ".streamlit/*"
           --exclude ".HF_TOKEN"
+          --exclude ".env*"
+          --exclude "*.pem"
+          --exclude "*.key"
+          --exclude "*.p12"
+          --exclude "*.pfx"
+          --exclude "*.token"
+          --exclude ".git-credentials"
           --commit-message "Deploy ${GITHUB_SHA::7}"

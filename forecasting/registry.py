@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+import importlib.util
+import os
+from dataclasses import dataclass
 
 from forecasting.contracts import ForecastAdapter, ModelCapabilities, RuntimeConfig
 from forecasting.exceptions import ModelNotAvailableError
@@ -20,6 +21,8 @@ class ModelRegistryEntry:
     # Optional: minimum package version, extra dependencies
     min_package_version: str = ""
     extra_deps: tuple[str, ...] = ()
+    required_module: str = ""
+    deployment_profiles: tuple[str, ...] = ()
     experimental: bool = False  # If True, adapter not yet fully implemented
 
 
@@ -64,14 +67,16 @@ class ModelRegistry:
                     license_notice="Apache-2.0 (weights and code)",
                 ),
                 min_package_version="timesfm[torch]==2.0.2",
+                required_module="timesfm",
+                deployment_profiles=("timesfm25",),
             )
         )
 
-        # TimesFM 3.0 — EXPERIMENTAL (adapter not yet implemented)
+        # TimesFM 3.0 — separate deployment profile (timesfm 2.5 and 3.0 conflict)
         self.register(
             ModelRegistryEntry(
                 model_key="timesfm_3",
-                display_name="TimesFM 3.0 (330M) — EXPERIMENTAL",
+                display_name="TimesFM 3.0 (330M)",
                 adapter_class="forecasting.adapters.timesfm3.TimesFM3Adapter",
                 capabilities=ModelCapabilities(
                     model_key="timesfm_3",
@@ -81,11 +86,11 @@ class ModelRegistry:
                     supports_cpu=True,
                     supports_cuda=True,
                     supports_mps=False,
-                    supports_multivariate=False,  # Not yet implemented
-                    supports_past_covariates=False,  # Not yet implemented
-                    supports_known_future_covariates=False,  # Not yet implemented
+                    supports_multivariate=True,
+                    supports_past_covariates=True,
+                    supports_known_future_covariates=True,
                     native_quantile_levels=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
-                    max_context_length=32768,
+                    max_context_length=15360,
                     min_context_length=32,
                     max_horizon=1024,
                     compiles_context_horizon=False,
@@ -93,12 +98,94 @@ class ModelRegistry:
                     license_notice=(
                         "TimesFM Non-Commercial License v1.0: "
                         "Weights restricted to non-commercial, non-production use only. "
-                        "Commercial/production use requires authorized Google Cloud services (BigQuery ML). "
-                        "Source code is Apache-2.0. ADAPTER NOT YET IMPLEMENTED."
+                        "Commercial/production use requires authorized Google Cloud "
+                        "services (BigQuery ML). "
+                        "Source code is Apache-2.0. Install in the TimesFM 3.0 profile."
                     ),
                 ),
                 min_package_version="timesfm[torch]>=3.0.0",
-                experimental=True,
+                required_module="timesfm3",
+                deployment_profiles=("timesfm3",),
+            )
+        )
+
+        self.register(
+            ModelRegistryEntry(
+                model_key="tirex_2",
+                display_name="TiRex-2",
+                adapter_class="forecasting.adapters.tirex2.TiRex2Adapter",
+                capabilities=ModelCapabilities(
+                    model_key="tirex_2",
+                    display_name="TiRex-2",
+                    checkpoint_id="NX-AI/TiRex-2",
+                    supports_cpu=True,
+                    supports_cuda=True,
+                    supports_multivariate=True,
+                    supports_past_covariates=True,
+                    supports_known_future_covariates=True,
+                    native_quantile_levels=(
+                        0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9
+                    ),
+                    max_context_length=32768,
+                    max_horizon=1024,
+                    supports_batch_inference=True,
+                    license_notice="Apache-2.0",
+                ),
+                min_package_version="tirex-2>=0.4.0",
+                required_module="tirex2",
+                deployment_profiles=("timesfm25", "timesfm3"),
+            )
+        )
+
+        self.register(
+            ModelRegistryEntry(
+                model_key="chronos",
+                display_name="Chronos-T5 Small",
+                adapter_class="forecasting.adapters.chronos.ChronosAdapter",
+                capabilities=ModelCapabilities(
+                    model_key="chronos",
+                    display_name="Chronos-T5 Small",
+                    checkpoint_id="amazon/chronos-t5-small",
+                    supports_cpu=True,
+                    supports_cuda=True,
+                    supports_multivariate=True,
+                    native_quantile_levels=(
+                        0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9
+                    ),
+                    max_context_length=512,
+                    supports_batch_inference=True,
+                    license_notice="Apache-2.0",
+                ),
+                min_package_version="chronos-forecasting>=1.4.0,<3.0.0",
+                required_module="chronos",
+                deployment_profiles=("timesfm25", "timesfm3", "moirai"),
+            )
+        )
+
+        self.register(
+            ModelRegistryEntry(
+                model_key="moirai",
+                display_name="Moirai 1.1 (Small)",
+                adapter_class="forecasting.adapters.moirai.MoiraiAdapter",
+                capabilities=ModelCapabilities(
+                    model_key="moirai",
+                    display_name="Moirai 1.1 (Small)",
+                    checkpoint_id="Salesforce/moirai-1.1-R-small",
+                    supports_cpu=True,
+                    supports_cuda=True,
+                    native_quantile_levels=(
+                        0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9
+                    ),
+                    max_context_length=2000,
+                    supports_batch_inference=False,
+                    license_notice=(
+                        "Review the Salesforce model-card license for weights; "
+                        "Uni2TS source code is Apache-2.0."
+                    ),
+                ),
+                min_package_version="uni2ts",
+                required_module="uni2ts",
+                deployment_profiles=("moirai",),
             )
         )
 
@@ -138,6 +225,8 @@ class ModelRegistry:
                     ),
                 ),
                 min_package_version="timestral>=0.1.0",
+                required_module="timestral",
+                deployment_profiles=("timesfm25", "timesfm3"),
             )
         )
 
@@ -177,6 +266,8 @@ class ModelRegistry:
                     ),
                 ),
                 min_package_version="timestral>=0.1.0",
+                required_module="timestral",
+                deployment_profiles=("timesfm25", "timesfm3"),
             )
         )
 
@@ -216,6 +307,8 @@ class ModelRegistry:
                     ),
                 ),
                 min_package_version="timestral>=0.1.0",
+                required_module="timestral",
+                deployment_profiles=("timesfm25", "timesfm3"),
             )
         )
 
@@ -255,6 +348,8 @@ class ModelRegistry:
                     ),
                 ),
                 min_package_version="timestral>=0.1.0",
+                required_module="timestral",
+                deployment_profiles=("timesfm25", "timesfm3"),
             )
         )
 
@@ -288,6 +383,8 @@ class ModelRegistry:
                     license_notice="Apache-2.0 (weights and code). Requires tfc-t0[torch]>=0.6.0.",
                 ),
                 min_package_version="tfc-t0[torch]>=0.6.0",
+                required_module="t0",
+                deployment_profiles=("timesfm25", "timesfm3"),
             )
         )
 
@@ -365,10 +462,19 @@ class ModelRegistry:
             List of available model registry entries
         """
         available = []
+        active_profile = os.getenv("TSFM_MODEL_PROFILE")
         for entry in self._entries.values():
             if (
                 entry.experimental or entry.capabilities.experimental
             ) and not include_experimental:
+                continue
+            if (
+                active_profile
+                and entry.deployment_profiles
+                and active_profile not in entry.deployment_profiles
+            ):
+                continue
+            if entry.required_module and importlib.util.find_spec(entry.required_module) is None:
                 continue
             available.append(entry)
         return available

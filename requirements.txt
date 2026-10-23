@@ -7,7 +7,7 @@ numpy>=2.0.0,<3.0
 plotly>=5.14.0,<6.0
 
 # Deep learning
-torch>=2.4.0
+torch>=2.8.0
 
 # Statistical analysis
 scipy>=1.10.0,<2.0
@@ -16,6 +16,8 @@ statsmodels>=0.14.0,<1.0
 # Permissive foundation models (Apache-2.0 weights)
 timesfm[torch]==2.0.2
 tfc-t0[torch]>=0.6.0,<1.0
+tirex-2>=0.4.0
+chronos-forecasting>=1.4.0,<3.0.0
 
 # Foundation models with additional license terms
 # timesfm[torch]>=3.0.0,<4.0  # TimesFM 3.0 (non-commercial weights)

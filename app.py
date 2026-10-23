@@ -98,6 +98,7 @@ def init_session_state() -> None:
         "validation_report": None,
         "profile_results": None,
         "forecast_job": None,
+        "forecast_run_errors": {},
         "backtest_result": None,
         "run_metadata": None,
         "analysis_ready": False,
@@ -118,6 +119,7 @@ def clear_results(keep_signature: bool = True) -> None:
         "df", "date_col", "target_cols", "past_covariate_cols",
         "known_covariate_cols", "validation_report", "profile_results",
         "forecast_job", "backtest_result", "run_metadata", "analysis_ready",
+        "forecast_run_errors",
     ]:
         st.session_state[key] = None if key != "analysis_ready" else False
     if keep_signature:
@@ -737,28 +739,24 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
     if should_run:
         horizon = rec_horizon if autopilot_now else ui_config.horizon
         with st.spinner("Loading models and generating forecasts…"):
-            try:
-                # Configure runtime
-                runtime = RuntimeConfig(
-                    device="auto",
-                    dtype="float32",
-                    compile=False,
-                )
+            runtime = RuntimeConfig(
+                device="auto",
+                dtype="float32",
+                compile=False,
+            )
 
-                # Get available non-experimental models to filter selected_models
-                service: ForecastingService = st.session_state.service
-                available_models = service.list_models(include_experimental=False)
-                available_keys = {m["model_key"] for m in available_models}
-                
-                # Filter selected_models to only include available (non-experimental) models
-                filtered_models = [m for m in selected_models if m in available_keys]
-                if not filtered_models:
-                    st.error("No valid models selected. Please select at least one available model.")
-                    return
+            service: ForecastingService = st.session_state.service
+            available_models = service.list_models(include_experimental=False)
+            available_keys = {m["model_key"] for m in available_models}
+            filtered_models = [m for m in selected_models if m in available_keys]
+            if not filtered_models:
+                st.error("No valid models selected. Please select at least one available model.")
+                return
 
-                # Run forecasts for all selected models
-                jobs = {}
-                for model_key in filtered_models:
+            jobs = {}
+            run_errors = {}
+            for model_key in filtered_models:
+                try:
                     with st.spinner(f"Running {model_key}..."):
                         if ui_config.backtest_mode:
                             job = service.run_forecast_with_backtest(
@@ -780,20 +778,25 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
                                 quantile_levels=DEFAULT_QUANTILE_LEVELS,
                             )
                         jobs[model_key] = job
+                except Exception as exc:
+                    run_errors[model_key] = str(exc)
 
-                st.session_state.forecast_jobs = jobs
-                st.session_state.run_metadata = {
-                    "horizon": horizon,
-                    "interval_label": ui_config.interval_coverage,
-                    "business_days_only": ui_config.business_days_only,
-                    "backtest_mode": ui_config.backtest_mode,
-                    "autopilot": autopilot_now,
-                    "interval_pct": int(ui_config.interval_coverage * 100),
-                }
-                st.session_state.backtest_results = {k: v.backtest for k, v in jobs.items()}
-            except Exception as exc:
-                st.exception(exc)
-                return
+            st.session_state.forecast_jobs = jobs
+            st.session_state.forecast_run_errors = run_errors
+            st.session_state.run_metadata = {
+                "horizon": horizon,
+                "interval_label": ui_config.interval_coverage,
+                "business_days_only": ui_config.business_days_only,
+                "backtest_mode": ui_config.backtest_mode,
+                "autopilot": autopilot_now,
+                "interval_pct": int(ui_config.interval_coverage * 100),
+            }
+            st.session_state.backtest_results = {k: v.backtest for k, v in jobs.items()}
+            if run_errors:
+                st.warning(
+                    "Some selected models could not produce a forecast. "
+                    "Their errors are listed in Evaluation."
+                )
 
     jobs = st.session_state.get("forecast_jobs", {})
     if not jobs:
@@ -881,11 +884,26 @@ def render_tab_evaluation(ui_config: ForecastConfigUI, selected_models: list[str
 
     interval_cov = ui_config.interval_coverage
 
-    # Aggregate metrics for all models
+    # Aggregate metrics for models with a completed backtest.
     all_metrics = {}
+    comparison_data = []
     for model_key in selected_models:
         bt = backtest_results.get(model_key)
         if bt is None:
+            job = jobs.get(model_key)
+            error = st.session_state.get("forecast_run_errors", {}).get(model_key)
+            if job is not None:
+                error = error or job.timing.get("backtest_error")
+            comparison_data.append({
+                "Model": model_key,
+                "Status": "Unavailable",
+                "Details": error or "No backtest result was recorded.",
+                "MAE": "—",
+                "RMSE": "—",
+                "MAPE": "—",
+                "MASE": "—",
+                "Coverage %": "—",
+            })
             continue
         agg_pm = bt.aggregate_point_metrics
         agg_prob = bt.aggregate_probabilistic_metrics
@@ -897,25 +915,25 @@ def render_tab_evaluation(ui_config: ForecastConfigUI, selected_models: list[str
             "Coverage": agg_prob.interval_coverage.get(interval_cov, math.nan) if agg_prob else math.nan,
             "backtest": bt,
         }
-
-    if not all_metrics:
-        st.warning("No backtest results available for selected models.")
-        return
-
-    # Summary comparison table
-    st.markdown("#### Model comparison")
-    comparison_data = []
-    for model_key, metrics in all_metrics.items():
         comparison_data.append({
             "Model": model_key,
-            "MAE": round(metrics["MAE"], 3),
-            "RMSE": round(metrics["RMSE"], 3),
-            "MAPE": "N/A" if math.isnan(metrics["MAPE"]) else f"{metrics['MAPE']:.2f}%",
-            "MASE": "N/A" if math.isnan(metrics["MASE"]) else f"{metrics['MASE']:.3f}",
-            "Coverage %": "N/A" if math.isnan(metrics["Coverage"]) else f"{metrics['Coverage']:.1f}%",
+            "Status": "Complete",
+            "Details": "",
+            "MAE": round(agg_pm.mae, 3),
+            "RMSE": round(agg_pm.rmse, 3),
+            "MAPE": "N/A" if math.isnan(agg_pm.mape) else f"{agg_pm.mape:.2f}%",
+            "MASE": "N/A" if math.isnan(agg_pm.mase) else f"{agg_pm.mase:.3f}",
+            "Coverage %": (
+                "N/A" if not agg_prob or math.isnan(agg_prob.interval_coverage.get(interval_cov, math.nan))
+                else f"{agg_prob.interval_coverage[interval_cov]:.1f}%"
+            ),
         })
-    comp_df = pd.DataFrame(comparison_data)
-    st.dataframe(comp_df, use_container_width=True, hide_index=True)
+
+    st.markdown("#### Model comparison")
+    st.dataframe(pd.DataFrame(comparison_data), use_container_width=True, hide_index=True)
+    if not all_metrics:
+        st.warning("No selected model has a completed backtest yet.")
+        return
 
     # Per-window chart for each model
     st.markdown("#### Rolling backtest windows")
@@ -974,23 +992,20 @@ def render_tab_comparison(selected_models: list[str]) -> None:
     jobs = st.session_state.get("forecast_jobs", {})
     meta = st.session_state.get("run_metadata", {})
 
-    if not jobs or len(selected_models) < 2:
-        st.info("Select at least 2 models and run forecasts to compare.")
+    if not jobs:
+        st.info("Run forecasts for the selected models to compare them.")
         return
 
     horizon = meta.get("horizon", 30)
-    future_dates = None
-    for m in selected_models:
-        if m in jobs:
-            future_dates = jobs[m].result.future_index
-            break
-
-    if future_dates is None:
-        st.warning("No forecast data available.")
+    available_jobs = {model_key: jobs[model_key] for model_key in selected_models if model_key in jobs}
+    if not available_jobs:
+        st.warning("No forecast data available for the selected models.")
         return
+    interval_coverage = meta.get("interval_label", 0.8)
+    interval_pct = int(interval_coverage * 100)
+    future_dates = next(iter(available_jobs.values())).result.future_index
 
-    # Overlay all model forecasts
-    st.markdown("#### Forecast overlay")
+    st.markdown(f"#### Forecast overlay · {interval_pct}% prediction interval")
     fig = go.Figure()
 
     # Add historical data
@@ -1002,62 +1017,93 @@ def render_tab_comparison(selected_models: list[str]) -> None:
     ))
 
     colors = ["#111827", "#dc2626", "#059669", "#7c3aed", "#ea580c", "#0891b2"]
-    for i, model_key in enumerate(selected_models):
-        if model_key not in jobs:
-            continue
-        job = jobs[model_key]
+    for i, (model_key, job) in enumerate(available_jobs.items()):
         result = job.result
-        interval_bounds = result.get_interval(0.8)
-        if interval_bounds is None:
-            continue
-        lower, upper = interval_bounds
         point = result.point[0] if result.point.ndim == 2 else result.point
-        lower = lower[0] if lower.ndim == 2 else lower
-        upper = upper[0] if upper.ndim == 2 else upper
 
         color = colors[i % len(colors)]
         fig.add_trace(go.Scatter(
             x=future_dates, y=point, mode="lines", name=model_key,
             line=dict(color=color, width=2.5)
         ))
-        fig.add_trace(go.Scatter(
-            x=future_dates, y=upper, mode="lines", line=dict(width=0),
-            showlegend=False, hoverinfo="skip"
-        ))
-        fig.add_trace(go.Scatter(
-            x=future_dates, y=lower, mode="lines", fill="tonexty",
-            name=f"{model_key} interval", line=dict(width=0),
-            fillcolor=f"rgba({int(color[1:3], 16)},{int(color[3:5], 16)},{int(color[5:7], 16)},0.1)"
-        ))
+        interval_bounds = result.get_interval(interval_coverage)
+        if interval_bounds is not None:
+            lower, upper = interval_bounds
+            lower = lower[0] if lower.ndim == 2 else lower
+            upper = upper[0] if upper.ndim == 2 else upper
+            fig.add_trace(go.Scatter(
+                x=future_dates, y=upper, mode="lines", line=dict(width=0),
+                showlegend=False, hoverinfo="skip"
+            ))
+            fig.add_trace(go.Scatter(
+                x=future_dates, y=lower, mode="lines", fill="tonexty",
+                name=f"{model_key} interval", line=dict(width=0),
+                fillcolor=f"rgba({int(color[1:3], 16)},{int(color[3:5], 16)},{int(color[5:7], 16)},0.1)"
+            ))
 
     if len(future_dates) > 0:
         fig.add_vline(x=future_dates[0], line_dash="dot", line_color="#94a3b8")
     fig = style_figure(fig, f"Model comparison (horizon={horizon})", 520, "Value")
     st.plotly_chart(fig, use_container_width=True)
 
-    # Side-by-side forecast tables
-    st.markdown("#### Side-by-side forecasts")
+    st.markdown("#### Selected model results")
+    comparison_rows = []
+    backtest_results = st.session_state.get("backtest_results", {})
+    run_errors = st.session_state.get("forecast_run_errors", {})
     for model_key in selected_models:
-        if model_key not in jobs:
+        job = available_jobs.get(model_key)
+        if job is None:
+            comparison_rows.append({
+                "Model": model_key,
+                "Forecast": "Failed",
+                "Backtest": "Not run",
+                "Details": run_errors.get(model_key, "No forecast result was recorded."),
+                "MAE": "—",
+                "RMSE": "—",
+                "Coverage": "—",
+            })
             continue
-        job = jobs[model_key]
-        result = job.result
-        interval_bounds = result.get_interval(0.8)
-        if interval_bounds is None:
-            continue
-        lower, upper = interval_bounds
-        point = result.point[0] if result.point.ndim == 2 else result.point
-        lower = lower[0] if lower.ndim == 2 else lower
-        upper = upper[0] if upper.ndim == 2 else upper
-
-        st.markdown(f"##### {model_key}")
-        display_df = pd.DataFrame({
-            "Date": future_dates,
-            "Forecast": point,
-            "Lower_80": lower,
-            "Upper_80": upper,
+        backtest = backtest_results.get(model_key)
+        if backtest is not None:
+            point_metrics = backtest.aggregate_point_metrics
+            probabilistic_metrics = backtest.aggregate_probabilistic_metrics
+            coverage = (
+                probabilistic_metrics.interval_coverage.get(interval_coverage, math.nan)
+                if probabilistic_metrics
+                else math.nan
+            )
+            mae = f"{point_metrics.mae:.3f}"
+            rmse = f"{point_metrics.rmse:.3f}"
+            coverage_text = "N/A" if math.isnan(coverage) else f"{coverage:.1f}%"
+        else:
+            mae = rmse = coverage_text = "—"
+        comparison_rows.append({
+            "Model": model_key,
+            "Forecast": "Complete",
+            "Backtest": "Complete" if backtest is not None else "Unavailable",
+            "Details": (
+                "" if backtest is not None
+                else job.timing.get("backtest_error", "No backtest result was recorded.")
+            ),
+            "MAE": mae,
+            "RMSE": rmse,
+            "Coverage": coverage_text,
         })
-        st.dataframe(display_df, use_container_width=True, height=200)
+    st.dataframe(pd.DataFrame(comparison_rows), use_container_width=True, hide_index=True)
+
+    st.markdown("#### Side-by-side forecasts")
+    for model_key, job in available_jobs.items():
+        result = job.result
+        point = result.point[0] if result.point.ndim == 2 else result.point
+
+        display_df = pd.DataFrame({"Date": future_dates, "Forecast": point})
+        interval_bounds = result.get_interval(interval_coverage)
+        if interval_bounds is not None:
+            lower, upper = interval_bounds
+            display_df[f"Lower_{interval_pct}"] = lower[0] if lower.ndim == 2 else lower
+            display_df[f"Upper_{interval_pct}"] = upper[0] if upper.ndim == 2 else upper
+        with st.expander(model_key, expanded=False):
+            st.dataframe(display_df, use_container_width=True, height=200)
 
 
 def main() -> None:

@@ -8,6 +8,7 @@ USER user
 
 ENV HOME=/home/user \
     PATH=/home/user/.local/bin:$PATH \
+    TSFM_MODEL_PROFILE=timesfm25 \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
     STREAMLIT_DISABLE_TELEMETRY=1
 

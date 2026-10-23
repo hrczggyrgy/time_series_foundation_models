@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-10-22  
 **Verification Method:** Documentation review, API inspection, license verification  
-**Status:** Pre-implementation audit — all capabilities marked `UNVERIFIED` until smoke-tested locally
+**Status:** Adapter and runtime profile notes. Mocked adapter tests do not replace inference smoke tests with downloaded weights.
 
 ---
 
@@ -44,47 +44,43 @@
 | **Checkpoint ID** | `google/timesfm-3.0-pytorch` |
 | **Checkpoint Revision** | `main` (default) |
 | **Runtime Package** | `timesfm[torch]` |
-| **Runtime Version** | `timesfm>=3.0.0` (PyPI release v3.0.0) |
+| **Runtime Version** | `timesfm[torch]>=3.0.0,<4.0` |
 | **Python Requirement** | `>=3.10` |
 | **PyTorch Requirement** | `>=2.0.0` (likely `>=2.4` per t0-gamma constraint) |
 | **Supported Devices (Verified)** | CPU, CUDA — MPS: UNVERIFIED |
 | **Input/Output Shapes** | Input: multivariate `[targets, context]` or batch → Output: point `[targets, horizon]`, quantiles `[targets, horizon, 9]` |
-| **Context Limit** | Patch-based (32-step patches); effective limit depends on GPU memory; documented ~32k+ |
+| **Context Limit** | 15,360 (current upstream PyTorch implementation) |
 | **Horizon Behavior** | Up to 1,024 steps in single forward pass (contiguous patch masking) |
 | **Native Quantile Levels** | 9 deciles: 0.1–0.9 (no mean in native output) |
 | **Covariate Support** | Native multivariate targets + past-only + known-future covariates |
 | **Source-Code License** | Apache-2.0 |
 | **Weights License** | **TimesFM Non-Commercial License v1.0** — **RESTRICTED** to non-commercial, non-production use |
 | **Verification Date** | 2026-10-22 |
-| **Smoke-Test Status** | **UNVERIFIED** |
+| **Smoke-Test Status** | Adapter shape tests pass; weight-load/inference smoke test pending |
 
 **Critical Licensing Notice:**
 - Self-hosted weights **cannot** be used for commercial or production purposes
 - Commercial use only permitted via authorized Google Cloud services (BigQuery ML)
-- Application must enforce `research` policy gate before enabling this model
+- The model notice is displayed in the app; the app does not enforce license eligibility
 - Do not make this the default for any user
 
-**API Reference (from upstream examples):**
+**API reference (upstream PyTorch implementation):**
 ```python
-from timesfm3 import TimesFM3Evaluator, ModelConfig
+from timesfm3.torch import TimesFM3Forecaster
 
-config = ModelConfig(
-    checkpoint_path="google/timesfm-3.0-pytorch",
-    per_core_batch_size=16,
+forecaster = TimesFM3Forecaster.from_pretrained(
+    "google/timesfm-3.0-pytorch",
     device="cuda",  # or "cpu"
 )
-forecaster = TimesFM3Evaluator(config)
-
-# Univariate
-target = np.random.randn(128).astype(np.float32)
-outputs = list(forecaster.forecast([target], horizon=24))
-# outputs[0].point, outputs[0].quantiles (9 levels: 0.1-0.9)
-
-# Multivariate (3 targets)
-target = np.random.randn(3, 128).astype(np.float32)
-outputs = list(forecaster.forecast([target], horizon=24))
-# outputs[0].point.shape == (3, 24), outputs[0].quantiles.shape == (3, 24, 9)
+output = forecaster.predict(
+    context=np.random.randn(3, 128).astype(np.float32),
+    horizon=24,
+    return_quantiles=True,
+)
+# output.forecast: [3, 24], output.quantiles: [3, 24, 9]
 ```
+
+TimesFM 2.5 and 3.0 use different versions of the same `timesfm` distribution and cannot be installed together. The app exposes TimesFM 3.0 only in the `timesfm3` deployment profile.
 
 ---
 
@@ -267,28 +263,22 @@ Before marking any model `VERIFIED`, the following must pass:
 
 ---
 
-## Environment Constraints (Reconciled)
+## Runtime Profiles
 
-| Constraint | Value | Source |
-|------------|-------|--------|
-| Python | `>=3.10` | t0-gamma, TimesFM 3.0 |
-| PyTorch | `>=2.4` | t0-gamma requirement (reconciles with TimesFM `>=2.0`) |
-| NumPy | `>=1.24` | Current app |
-| Pandas | `>=2.0` | Current app |
+| Profile | Dockerfile | Runtime constraints |
+|---------|------------|---------------------|
+| `timesfm25` (default) | `Dockerfile` | PyTorch >=2.8 for TiRex-2; TimesFM 2.5; Chronos |
+| `timesfm3` | `Dockerfile.timesfm3` | TimesFM 3.0 replaces TimesFM 2.5; TiRex-2 and Chronos remain available |
+| `moirai` | `Dockerfile.moirai` | Uni2TS currently pins PyTorch <2.5 and NumPy 1.26; Moirai is installed in its own profile |
 
-**Action Required:** Pin a mutually compatible dependency set in `pyproject.toml` and verify no version conflicts between `timesfm[torch]>=3.0.0`, `tfc-t0[torch]>=0.6.0`, `timestral`, and `torch>=2.4`.
+Select a profile from the GitHub Actions `workflow_dispatch` input. The registry hides models not installed in the active profile.
 
----
+MOMENT is not registered as a zero-shot forecaster: the upstream `MOMENTPipeline` warns that its forecasting head must be fine-tuned. Lag-Llama is also not registered because its published estimator flow has not been validated against this app's forecast request/output contracts.
 
-## Next Steps
+## Verification Status
 
-1. Create `pyproject.toml` with pinned dependencies
-2. Implement `forecasting/contracts.py` with typed dataclasses
-3. Implement `forecasting/registry.py` with model registry metadata
-4. Refactor TimesFM 2.5 into `forecasting/adapters/timesfm25.py`
-5. Implement naive baselines in `forecasting/adapters/naive.py`
-6. Implement t0-gamma adapter (permissive, good first integration)
-7. Implement Timestral adapters
-8. Implement TimesFM 3.0 adapter
-9. Rebuild backtesting around forecast origins
-10. Add multivariate/covariate support
+- The comparison and evaluation Streamlit screens have smoke tests.
+- The 2.5 baseline has existing adapter tests and was previously smoke-tested in the app.
+- TiRex-2, Chronos, and TimesFM 3.0 output mapping have mocked unit tests.
+- Moirai has an adapter and isolated dependency profile, but has not been exercised with installed Uni2TS or downloaded weights.
+- Actual new-backend downloads and inference remain pending successful profile image builds and model-cache warm-up.

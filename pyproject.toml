@@ -32,7 +32,7 @@ dependencies = [
     "statsmodels>=0.14.0,<1.0",
 
     # Deep learning (base)
-    "torch>=2.4.0",
+    "torch>=2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +40,8 @@ dependencies = [
 permissive = [
     "timesfm[torch]==2.0.2",      # TimesFM 2.5
     "tfc-t0[torch]>=0.6.0,<1.0",  # t0-gamma
+    "tirex-2>=0.4.0",             # TiRex-2 (requires PyTorch >=2.8)
+    "chronos-forecasting>=1.4.0,<3.0.0",
 ]
 
 # Foundation models with additional license terms
@@ -48,10 +50,12 @@ restricted = [
     "timestral @ git+https://github.com/mistralai/timestral@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff",  # Timestral family (Modified MIT, $20M revenue cap)
 ]
 
-# All model backends (Note: timesfm 2.5 and 3.0 cannot coexist; choose one)
+# Default model backends. Moirai and TimesFM 3.0 use separate dependency profiles.
 all-models = [
     "timesfm[torch]==2.0.2",  # or "timesfm[torch]>=3.0.0,<4.0" for TimesFM 3.0
     "tfc-t0[torch]>=0.6.0,<1.0",
+    "tirex-2>=0.4.0",
+    "chronos-forecasting>=1.4.0,<3.0.0",
     "timestral @ git+https://github.com/mistralai/timestral@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff",
 ]
 
