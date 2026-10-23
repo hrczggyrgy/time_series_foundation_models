@@ -949,7 +949,11 @@ def render_tab_evaluation(ui_config: ForecastConfigUI, selected_models: list[str
                     "point": w.point_forecasts[0] if w.point_forecasts.ndim == 2 else w.point_forecasts,
                 })
             st.markdown(f"##### {model_key}")
-            st.plotly_chart(plot_rolling_backtest(plot_windows, st.session_state.df), use_container_width=True)
+            st.plotly_chart(
+                plot_rolling_backtest(plot_windows, st.session_state.df),
+                use_container_width=True,
+                key=f"rolling-backtest-{model_key}",
+            )
 
             # Per-window metrics table
             wdf = pd.DataFrame([{
