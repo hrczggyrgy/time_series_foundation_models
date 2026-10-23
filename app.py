@@ -7,6 +7,7 @@ import hashlib
 import io
 import math
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -53,26 +54,60 @@ DEFAULT_QUANTILE_LEVELS = (0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.
 
 CSS = """
 <style>
-html, body, [data-testid="stAppViewContainer"] { font-family: Inter, Segoe UI, Arial, sans-serif; }
-[data-testid="stAppViewContainer"] { background: #f6f5f2; }
-[data-testid="stSidebar"] { background: #f8f7f4; border-right: 1px solid #e8e6e2; }
-[data-testid="metric-container"] { background: #ffffff; border: 1px solid rgba(17,24,39,0.08); border-radius: 14px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-.block-container { padding-top: 2rem; padding-bottom: 2rem; }
-.callout { background: #ffffff; border: 1px solid rgba(14,165,233,0.18); border-radius: 12px; padding: 12px 16px; color: #0f172a; margin: 0 0 1rem 0; }
-.callout-warn { background: #fffaf2; border: 1px solid rgba(245,158,11,0.22); border-radius: 12px; padding: 12px 16px; color: #7c2d12; margin: 0 0 1rem 0; }
-.callout-good { background: #f5fbf7; border: 1px solid rgba(16,185,129,0.22); border-radius: 12px; padding: 12px 16px; color: #065f46; margin: 0 0 1rem 0; }
+html, body, [data-testid="stAppViewContainer"] {
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    color: #172033;
+}
+[data-testid="stAppViewContainer"] { background: #f5f7fa; }
+[data-testid="stSidebar"] {
+    background: #fff;
+    border-right: 1px solid #e7ebf1;
+}
+.block-container { max-width: 1480px; padding-top: 1.6rem; padding-bottom: 2.5rem; }
+.hero-title { color: #172033; font-size: 1.85rem; font-weight: 720; letter-spacing: -0.04em; line-height: 1.2; }
+.hero-subtitle { color: #687386; font-size: 0.98rem; margin-top: 0.35rem; }
+[data-testid="metric-container"] {
+    background: #fff;
+    border: 1px solid #e7ebf1;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 2px 8px rgba(24, 39, 75, 0.035);
+}
+.callout, .callout-warn, .callout-good {
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 0 0 1rem;
+}
+.callout { background: #fff; border: 1px solid #dce7f3; color: #24364b; }
+.callout-warn { background: #fffaf2; border: 1px solid #f2dfbe; color: #7c4a12; }
+.callout-good { background: #f4faf7; border: 1px solid #d3e9dc; color: #20583d; }
 .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; }
 .badge-green { background: #d1fae5; color: #065f46; }
 .badge-yellow { background: #fef3c7; color: #92400e; }
 .badge-red { background: #fee2e2; color: #991b1b; }
-.section-divider { border: none; border-top: 1px solid #e8e6e2; margin: 1.2rem 0 1rem 0; }
-.small-note { color: #6b7280; font-size: 0.92rem; }
-.stRadio [role="radiogroup"] { gap: 0.5rem; }
-.stRadio [role="radiogroup"] label { padding: 0.35rem 0.85rem; border: 1px solid #e5e7eb; border-radius: 9999px; background: #fff; }
-.stButton button, .stDownloadButton button { border-radius: 10px; font-weight: 600; }
-.stButton button[kind="primary"] { background: #111827; border-color: #111827; }
+.section-divider { border: none; border-top: 1px solid #e4e9f0; margin: 1.15rem 0 1rem; }
+.small-note { color: #687386; font-size: 0.9rem; }
+[data-testid="stRadio"] [role="radiogroup"] { gap: 0.45rem; }
+[data-testid="stRadio"] [role="radiogroup"] label {
+    padding: 0.35rem 0.8rem;
+    border: 1px solid #e1e6ed;
+    border-radius: 8px;
+    background: #fff;
+}
+.stButton button, .stDownloadButton button { border-radius: 8px; font-weight: 600; }
+.stButton button[kind="primary"] { background: #1d3557; border-color: #1d3557; }
+div[data-testid="stDataFrame"] { border: 1px solid #e7ebf1; border-radius: 10px; overflow: hidden; }
 </style>
 """
+
+COMPARISON_METRICS = {
+    "MAE": "MAE",
+    "RMSE": "RMSE",
+    "MAPE": "MAPE",
+    "MASE": "MASE",
+    "CRPS": "CRPS",
+    "Pinball loss": "Pinball",
+}
 
 
 @dataclass(frozen=True)
@@ -393,9 +428,125 @@ def explain_backtest_results(metrics: dict[str, float], meta: dict[str, Any]) ->
 
 
 def style_figure(fig: go.Figure, title: str, height: int, yaxis_title: str = "Value") -> go.Figure:
-    fig.update_layout(template="plotly_white", title=title, height=height, margin=dict(l=12, r=12, t=46, b=12), hovermode="x unified", plot_bgcolor="white", paper_bgcolor="white", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(15,23,42,0.08)", zeroline=False)
-    fig.update_yaxes(title=yaxis_title, showgrid=True, gridcolor="rgba(15,23,42,0.08)", zeroline=False)
+    fig.update_layout(
+        template="plotly_white",
+        title=dict(text=title, font=dict(size=16, color="#172033")),
+        height=height,
+        margin=dict(l=18, r=18, t=54, b=18),
+        hovermode="x unified",
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        font=dict(family="Inter, Segoe UI, Arial, sans-serif", color="#334155", size=12),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=11),
+        ),
+    )
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="#edf1f5",
+        zeroline=False,
+        linecolor="#d9e0e8",
+        ticks="outside",
+        tickcolor="#cbd5e1",
+    )
+    fig.update_yaxes(
+        title=yaxis_title,
+        showgrid=True,
+        gridcolor="#edf1f5",
+        zeroline=False,
+        linecolor="#d9e0e8",
+        ticks="outside",
+        tickcolor="#cbd5e1",
+    )
+    return fig
+
+
+def build_metric_scatter(
+    metrics: Mapping[str, Mapping[str, float | None]],
+    x_metric: str,
+    y_metric: str,
+    model_labels: Mapping[str, str] | None = None,
+) -> go.Figure:
+    """Build a two-metric scatterplot, omitting unavailable metric values."""
+    if x_metric == y_metric:
+        raise ValueError("Choose a different accuracy metric for each axis.")
+
+    colors = [
+        "#315a8a", "#d17b49", "#3f806d", "#8568a8", "#bc5864",
+        "#548c9d", "#9b8442", "#56677c", "#5e9278", "#a65f83",
+    ]
+    points = []
+    for model, values in metrics.items():
+        x_value = values.get(x_metric)
+        y_value = values.get(y_metric)
+        if (
+            x_value is not None
+            and y_value is not None
+            and math.isfinite(x_value)
+            and math.isfinite(y_value)
+        ):
+            points.append((model, x_value, y_value))
+    labels = model_labels or {}
+    metric_names = {value: name for name, value in COMPARISON_METRICS.items()}
+    fig = go.Figure()
+    for index, (model, x_value, y_value) in enumerate(points):
+        label = labels.get(model, model)
+        fig.add_trace(
+            go.Scatter(
+                x=[x_value],
+                y=[y_value],
+                name=label,
+                mode="markers",
+                marker=dict(
+                    size=12,
+                    color=colors[index % len(colors)],
+                    line=dict(color="#ffffff", width=1.5),
+                    opacity=0.92,
+                ),
+                hovertemplate=(
+                    f"<b>{label}</b><br>{x_metric}: %{{x:.4g}}"
+                    f"<br>{y_metric}: %{{y:.4g}}"
+                    "<extra></extra>"
+                ),
+            ),
+        )
+    fig.update_layout(
+        template="plotly_white",
+        height=470,
+        margin=dict(l=24, r=24, t=54, b=24),
+        hovermode="closest",
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        font=dict(family="Inter, Segoe UI, Arial, sans-serif", color="#334155", size=12),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            font=dict(size=10),
+        ),
+    )
+    fig.update_xaxes(
+        title=f"{metric_names.get(x_metric, x_metric)} · lower is better",
+        showgrid=True,
+        gridcolor="#edf1f5",
+        zeroline=False,
+        linecolor="#d9e0e8",
+    )
+    fig.update_yaxes(
+        title=f"{metric_names.get(y_metric, y_metric)} · lower is better",
+        showgrid=True,
+        gridcolor="#edf1f5",
+        zeroline=False,
+        linecolor="#d9e0e8",
+    )
     return fig
 
 
@@ -993,8 +1144,12 @@ def render_tab_evaluation(ui_config: ForecastConfigUI, selected_models: list[str
 
 def render_tab_comparison(selected_models: list[str]) -> None:
     st.markdown("### 5. Model Comparison")
+    st.caption(
+        "Compare forecast accuracy across models, then inspect forecast paths and run details."
+    )
     jobs = st.session_state.get("forecast_jobs", {})
     meta = st.session_state.get("run_metadata", {})
+    backtest_results = st.session_state.get("backtest_results", {})
 
     if not jobs:
         st.info("Run forecasts for the selected models to compare them.")
@@ -1008,6 +1163,77 @@ def render_tab_comparison(selected_models: list[str]) -> None:
     interval_coverage = meta.get("interval_label", 0.8)
     interval_pct = int(interval_coverage * 100)
     future_dates = next(iter(available_jobs.values())).result.future_index
+
+    metric_values: dict[str, dict[str, float]] = {}
+    for model_key in selected_models:
+        backtest = backtest_results.get(model_key)
+        if backtest is None:
+            continue
+        point = backtest.aggregate_point_metrics
+        probabilistic = backtest.aggregate_probabilistic_metrics
+        metric_values[model_key] = {
+            "MAE": point.mae,
+            "RMSE": point.rmse,
+            "MAPE": point.mape,
+            "MASE": point.mase,
+            "CRPS": probabilistic.crps if probabilistic else math.nan,
+            "Pinball": (
+                probabilistic.mean_pinball_loss
+                if probabilistic and probabilistic.mean_pinball_loss is not None
+                else math.nan
+            ),
+        }
+
+    display_names = {
+        model["model_key"]: model["display_name"]
+        for model in st.session_state.service.list_models(include_experimental=True)
+    }
+    available_metrics = [
+        name
+        for name, key in COMPARISON_METRICS.items()
+        if any(
+            (value := values.get(key)) is not None and math.isfinite(value)
+            for values in metric_values.values()
+        )
+    ]
+    st.markdown("#### Accuracy landscape")
+    if len(available_metrics) >= 2:
+        axis_x, axis_y = st.columns(2)
+        x_metric = axis_x.selectbox(
+            "Horizontal axis",
+            available_metrics,
+            index=available_metrics.index("MAE") if "MAE" in available_metrics else 0,
+            key="comparison_scatter_x",
+        )
+        y_options = [metric for metric in available_metrics if metric != x_metric]
+        default_y = "RMSE" if "RMSE" in y_options else y_options[0]
+        y_metric = axis_y.selectbox(
+            "Vertical axis",
+            y_options,
+            index=y_options.index(default_y),
+            key="comparison_scatter_y",
+        )
+        scatter = build_metric_scatter(
+            metric_values,
+            COMPARISON_METRICS[x_metric],
+            COMPARISON_METRICS[y_metric],
+            display_names,
+        )
+        if scatter.data:
+            st.plotly_chart(
+                scatter,
+                use_container_width=True,
+                key="comparison-accuracy-scatter",
+            )
+            st.caption(
+                "Each point is a completed model backtest. Lower values are better; "
+                "models nearer the lower-left perform better on both selected metrics. "
+                "Hover over a point for exact values."
+            )
+        else:
+            st.info("No model has both selected metrics available.")
+    else:
+        st.info("Run completed backtests for at least two accuracy metrics to plot this chart.")
 
     st.markdown(f"#### Forecast overlay · {interval_pct}% prediction interval")
     fig = go.Figure()
@@ -1052,7 +1278,6 @@ def render_tab_comparison(selected_models: list[str]) -> None:
 
     st.markdown("#### Selected model results")
     comparison_rows = []
-    backtest_results = st.session_state.get("backtest_results", {})
     run_errors = st.session_state.get("forecast_run_errors", {})
     for model_key in selected_models:
         job = available_jobs.get(model_key)
@@ -1116,8 +1341,13 @@ def main() -> None:
     init_session_state()
 
     col1, col2 = st.columns([5, 1])
-    col1.markdown("# 📈 Multi-Model Forecasting Workbench")
-    col1.markdown("Zero-shot forecasting with TimesFM, Timestral, t0-gamma, and naive baselines.")
+    col1.markdown(
+        '<div class="hero-title">Time Series Forecasting Workbench</div>'
+        '<div class="hero-subtitle">'
+        "Explore zero-shot forecasts, compare model accuracy, and inspect backtest results."
+        "</div>",
+        unsafe_allow_html=True,
+    )
     if st.session_state.validation_report:
         col2.markdown("<br>", unsafe_allow_html=True)
         col2.markdown(readiness_badge(st.session_state.validation_report), unsafe_allow_html=True)
