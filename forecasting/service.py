@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -37,6 +38,9 @@ from forecasting.reporting.exports import (
     generate_run_id,
 )
 
+if TYPE_CHECKING:
+    from forecasting.hybrid import HybridRunResult
+
 
 @dataclass(frozen=False)
 class ForecastJob:
@@ -62,7 +66,7 @@ class ForecastingService:
     def __init__(
         self,
         default_runtime: RuntimeConfig | None = None,
-    ):
+    ) -> None:
         self.registry = get_registry()
         self.default_runtime = default_runtime or RuntimeConfig()
 
@@ -347,6 +351,36 @@ class ForecastingService:
             job.timing["backtest_error"] = str(e)
 
         return job
+
+    def run_autonomous_hybrid(
+        self,
+        parsed_data: ParsedData,
+        horizon: int,
+        runtime_config: RuntimeConfig | None = None,
+        business_days_only: bool = False,
+        n_windows: int = 3,
+        min_training_history: int = 32,
+        max_oof_blocks: int = 20,
+        quantile_levels: tuple[float, ...] = (
+            0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9
+        ),
+        progress_callback: Callable[[str, str, float | None], None] | None = None,
+    ) -> HybridRunResult:
+        """Select and run an autonomous base-plus-residual hybrid forecast."""
+        from forecasting.hybrid import run_autonomous_hybrid
+
+        return run_autonomous_hybrid(
+            service=self,
+            parsed_data=parsed_data,
+            horizon=horizon,
+            runtime_config=runtime_config,
+            business_days_only=business_days_only,
+            n_windows=n_windows,
+            min_training_history=min_training_history,
+            max_oof_blocks=max_oof_blocks,
+            quantile_levels=quantile_levels,
+            progress_callback=progress_callback,
+        )
 
     def export_forecast(
         self,

@@ -42,3 +42,37 @@ def test_tirex2_converts_quantile_axis_to_common_contract(monkeypatch):
     assert result.quantiles is not None
     assert result.quantiles.shape == (2, 3, 9)
     np.testing.assert_allclose(result.point, 4.0)
+
+
+def test_tirex2_passes_historical_and_future_known_covariates(monkeypatch):
+    request = _request()
+    known_history = np.arange(12, dtype=float).reshape(1, -1)
+    known_future = np.array([[12.0, 13.0, 14.0]])
+    request = ForecastRequest(
+        target_history=request.target_history[:1],
+        history_index=request.history_index,
+        target_names=("first",),
+        horizon=request.horizon,
+        future_index=request.future_index,
+        known_covariates_history=known_history,
+        known_covariates_future=known_future,
+    )
+    module = ModuleType("tirex2")
+
+    class TimeseriesType:
+        def __init__(self, **kwargs):
+            self.values = kwargs
+
+    module.TimeseriesType = TimeseriesType
+    monkeypatch.setitem(__import__("sys").modules, "tirex2", module)
+
+    class Model:
+        def forecast(self, timeseries, prediction_length, output_type):
+            covariates = timeseries[0].values["future_covariates"]
+            np.testing.assert_array_equal(
+                covariates.cpu().numpy(),
+                np.concatenate((known_history, known_future), axis=1),
+            )
+            return [np.zeros((1, 9, prediction_length))]
+
+    TiRex2Adapter()._predict_impl(request, Model())

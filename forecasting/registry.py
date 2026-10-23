@@ -57,7 +57,7 @@ class ModelRegistry:
                     supports_mps=False,  # UNVERIFIED
                     supports_multivariate=False,
                     supports_past_covariates=False,
-                    supports_known_future_covariates=True,  # Limited
+                    supports_known_future_covariates=False,
                     native_quantile_levels=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
                     max_context_length=16384,
                     min_context_length=32,

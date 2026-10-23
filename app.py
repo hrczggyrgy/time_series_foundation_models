@@ -115,6 +115,7 @@ class ForecastConfigUI:
     horizon: int
     interval_coverage: float
     business_days_only: bool
+    strategy: str
     backtest_mode: bool
     n_backtest_windows: int
     autopilot: bool
@@ -135,6 +136,9 @@ def init_session_state() -> None:
         "forecast_job": None,
         "forecast_jobs": {},
         "forecast_run_errors": {},
+        "hybrid_result": None,
+        "hybrid_cache_key": None,
+        "forecast_strategy": "Standard forecasting",
         "backtest_result": None,
         "backtest_results": {},
         "run_metadata": None,
@@ -170,6 +174,8 @@ def clear_forecast_results() -> None:
     st.session_state["backtest_results"] = {}
     st.session_state["forecast_run_errors"] = {}
     st.session_state["run_metadata"] = None
+    st.session_state["hybrid_result"] = None
+    st.session_state["hybrid_cache_key"] = None
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -614,6 +620,20 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
     st.sidebar.markdown("## ⚙️ Settings")
 
     service: ForecastingService = st.session_state.service
+    strategy = st.sidebar.radio(
+        "Forecasting strategy",
+        ["Standard forecasting", "Autonomous hybrid"],
+        key="forecast_strategy",
+        horizontal=True,
+        help=(
+            "Standard mode uses your selected model(s). Autonomous hybrid searches "
+            "for a base forecaster and a leakage-free residual correction."
+        ),
+    )
+    if st.session_state.get("_previous_forecast_strategy") != strategy:
+        if st.session_state.get("_previous_forecast_strategy") is not None:
+            clear_forecast_results()
+        st.session_state["_previous_forecast_strategy"] = strategy
 
     # Get all available models (exclude experimental by default)
     all_models = service.list_models(include_experimental=False)
@@ -628,24 +648,29 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
     if not stored_models:
         stored_models = default_models
 
-    selected_models = st.sidebar.multiselect(
-        "Models to compare",
-        options=model_keys,
-        format_func=lambda k: model_options[k],
-        default=stored_models,
-        help="Select one or more models to run and compare. Experimental models are hidden by default.",
+    if strategy == "Standard forecasting":
+        selected_models = st.sidebar.multiselect(
+            "Models to compare",
+            options=model_keys,
+            format_func=lambda k: model_options[k],
+            default=stored_models,
+            help="Select one or more models to run and compare. Experimental models are hidden by default.",
+        )
+        if not selected_models:
+            st.sidebar.warning("Select at least one model.")
+            st.stop()
+        st.session_state.selected_models = selected_models
+    else:
+        selected_models = stored_models
+        st.sidebar.caption(
+            "Models are selected automatically from the active deployment; "
+            "the manual model list is not used in this strategy."
+        )
+
+    selected_model = selected_models[0] if selected_models else ""
+    model_info = next(
+        (m for m in all_models if m["model_key"] == selected_model), None
     )
-
-    if not selected_models:
-        st.sidebar.warning("Select at least one model.")
-        st.stop()
-
-    # Store in session state for other tabs
-    st.session_state.selected_models = selected_models
-
-    # Primary model (first selected) for single-model operations
-    selected_model = selected_models[0]
-    model_info = next((m for m in all_models if m["model_key"] == selected_model), None)
 
     # Data source
     data_source = st.sidebar.radio("Data source", ["Synthetic demo data", "Upload CSV"], label_visibility="collapsed")
@@ -689,7 +714,12 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
     st.sidebar.download_button("Download sample CSV", data=sample_csv_bytes(), file_name="sample_timeseries.csv", mime="text/csv", use_container_width=True, help="Two-column example with enough rows for diagnostics and backtesting.")
 
     # Model info caption
-    if model_info:
+    if strategy == "Autonomous hybrid":
+        st.sidebar.caption(
+            "Selection objective: lowest rolling-origin MAE (RMSE breaks ties). "
+            "A final horizon-sized holdout is kept separate when the data permits."
+        )
+    elif model_info:
         caps = model_info
         max_ctx = f"{caps['max_context']:,}" if caps['max_context'] else 'N/A'
         max_hz = f"{caps['max_horizon']:,}" if caps['max_horizon'] else 'N/A'
@@ -703,6 +733,7 @@ Compare with: {', '.join([model_options[m] for m in selected_models[1:]]) if len
 
     return ForecastConfigUI(
         horizon=horizon, interval_coverage=interval_coverage,
+        strategy=strategy,
         business_days_only=business_days_only, backtest_mode=backtest_mode,
         n_backtest_windows=n_backtest_windows,
         autopilot=autopilot, auto_fix_data=auto_fix_data,
@@ -865,6 +896,277 @@ def render_tab_diagnostics() -> None:
         st.plotly_chart(fig, use_container_width=True)
 
 
+def hybrid_run_cache_key(
+    parsed_data: Any,
+    horizon: int,
+    ui_config: ForecastConfigUI,
+) -> str:
+    prepared_digest = hashlib.sha256(
+        parsed_data.df.to_csv(index=False).encode("utf-8")
+    ).hexdigest()
+    key_parts = (
+        parsed_data.raw_signature,
+        prepared_digest,
+        horizon,
+        ui_config.strategy,
+        ui_config.n_backtest_windows,
+        ui_config.business_days_only,
+        ui_config.interval_coverage,
+        DEFAULT_QUANTILE_LEVELS,
+    )
+    return hashlib.sha256(repr(key_parts).encode("utf-8")).hexdigest()
+
+
+def render_hybrid_forecast(
+    ui_config: ForecastConfigUI,
+    horizon: int,
+    profile: dict[str, Any],
+) -> None:
+    parsed_data = st.session_state.get("parsed_data")
+    if parsed_data is None:
+        st.info("Prepare data first in the Data tab.")
+        return
+
+    cache_key = hybrid_run_cache_key(parsed_data, horizon, ui_config)
+    if st.session_state.get("hybrid_cache_key") != cache_key:
+        st.session_state.hybrid_result = None
+        st.session_state.hybrid_cache_key = None
+
+    if st.button("▶️ Run autonomous hybrid", type="primary", use_container_width=True):
+        progress_bar = st.progress(0.0)
+        stage_message = st.empty()
+        stage_labels = {
+            "base_search": "1/5 · Searching for the base model",
+            "oof_residuals": "2/5 · Generating out-of-sample residuals",
+            "residual_search": "3/5 · Searching for the residual model",
+            "final_fit": "4/5 · Evaluating the hybrid",
+            "final_forecast": "5/5 · Producing the final forecast",
+        }
+
+        def on_progress(stage: str, message: str, fraction: float | None) -> None:
+            stage_message.info(f"**{stage_labels.get(stage, stage)}** — {message}")
+            if fraction is not None:
+                progress_bar.progress(min(1.0, max(0.0, fraction)))
+
+        try:
+            with st.status("Autonomous hybrid search is running…", expanded=True) as status:
+                result = st.session_state.service.run_autonomous_hybrid(
+                    parsed_data=parsed_data,
+                    horizon=horizon,
+                    runtime_config=RuntimeConfig(
+                        device="auto",
+                        dtype="float32",
+                        compile=False,
+                    ),
+                    business_days_only=ui_config.business_days_only,
+                    n_windows=ui_config.n_backtest_windows,
+                    quantile_levels=DEFAULT_QUANTILE_LEVELS,
+                    progress_callback=on_progress,
+                )
+                st.session_state.hybrid_result = result
+                st.session_state.hybrid_cache_key = cache_key
+                st.session_state.run_metadata = {
+                    "horizon": horizon,
+                    "ctx_used": result.result.context_used,
+                    "hybrid": True,
+                }
+                progress_bar.progress(1.0)
+                status.update(label="Autonomous hybrid completed.", state="complete")
+        except Exception as exc:
+            st.error(f"Autonomous hybrid failed: {exc}")
+            return
+
+    hybrid = st.session_state.get("hybrid_result")
+    if hybrid is None:
+        st.info("Run the autonomous hybrid search to select and evaluate both stages.")
+        return
+    if st.session_state.get("hybrid_cache_key") != cache_key:
+        st.info("Hybrid results are stale for the current data or settings. Run the search again.")
+        return
+
+    target_name = profile.get("primary_target", "target")
+    st.markdown("#### Autonomous hybrid result")
+    if hybrid.status == "hybrid":
+        st.success(
+            f"Hybrid complete · base: **{hybrid.base_model_key}** · "
+            f"residual: **{hybrid.residual_model_key}** · "
+            f"{hybrid.residual_observations:,} usable out-of-sample residuals"
+        )
+    else:
+        st.warning(
+            f"Base-only fallback · selected base: **{hybrid.base_model_key}**. "
+            "The residual correction did not complete."
+        )
+
+    base_col, residual_col = st.columns(2)
+    base_col.metric("Base validation MAE", f"{hybrid.base_validation.mae:.4g}")
+    base_col.metric("Base validation RMSE", f"{hybrid.base_validation.rmse:.4g}")
+    if hybrid.residual_validation is not None:
+        residual_col.metric("Hybrid selection MAE", f"{hybrid.residual_validation.mae:.4g}")
+        residual_col.metric("Hybrid selection RMSE", f"{hybrid.residual_validation.rmse:.4g}")
+        st.caption("Base and hybrid scores below use identical rolling model-selection windows.")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Forecast": "Base only",
+                        "MAE": hybrid.base_validation.mae,
+                        "RMSE": hybrid.base_validation.rmse,
+                    },
+                    {
+                        "Forecast": "Hybrid",
+                        "MAE": hybrid.residual_validation.mae,
+                        "RMSE": hybrid.residual_validation.rmse,
+                    },
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        residual_col.info("No residual model passed validation.")
+
+    st.caption(
+        f"Search completed in {hybrid.timing.get('total_seconds', 0.0):.1f}s "
+        f"(base search {hybrid.timing.get('base_search_seconds', 0.0):.1f}s; "
+        f"residual search {hybrid.timing.get('residual_search_seconds', 0.0):.1f}s; "
+        f"final fit {hybrid.timing.get('final_forecast_seconds', 0.0):.1f}s)."
+    )
+    for warning in dict.fromkeys((*hybrid.warnings, *hybrid.result.warnings)):
+        st.warning(warning)
+
+    if hybrid.holdout_metrics:
+        st.markdown("##### Untouched holdout accuracy")
+        holdout = hybrid.holdout_metrics
+        holdout_rows = [
+            {
+                "Forecast": "Base only",
+                "MAE": holdout["base_mae"],
+                "RMSE": holdout["base_rmse"],
+            }
+        ]
+        if holdout["hybrid_mae"] is not None:
+            holdout_rows.append(
+                {
+                    "Forecast": "Hybrid",
+                    "MAE": holdout["hybrid_mae"],
+                    "RMSE": holdout["hybrid_rmse"],
+                }
+            )
+        st.dataframe(
+            pd.DataFrame(holdout_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    result = hybrid.result
+    point = result.point[0]
+    base_point = hybrid.base_forecast[0]
+    correction = hybrid.residual_forecast[0]
+    future_dates = result.future_index
+    history_df = st.session_state.df
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["ds"].tail(180),
+            y=history_df["y"].tail(180),
+            mode="lines",
+            name="Observed history",
+            line=dict(color="#6366f1", width=1.8),
+        )
+    )
+    if result.quantiles is not None:
+        bounds = result.get_interval(ui_config.interval_coverage)
+        if bounds is not None:
+            lower, upper = bounds
+            fig.add_trace(
+                go.Scatter(
+                    x=future_dates,
+                    y=upper[0],
+                    mode="lines",
+                    line=dict(width=0),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=future_dates,
+                    y=lower[0],
+                    mode="lines",
+                    fill="tonexty",
+                    name=f"Forecast interval ({int(ui_config.interval_coverage * 100)}%)",
+                    line=dict(width=0),
+                    fillcolor="rgba(99,102,241,0.12)",
+                )
+            )
+    fig.add_trace(
+        go.Scatter(x=future_dates, y=base_point, mode="lines", name="Base forecast", line=dict(color="#64748b", dash="dot"))
+    )
+    fig.add_trace(
+        go.Scatter(x=future_dates, y=point, mode="lines", name="Hybrid forecast", line=dict(color="#111827", width=3))
+    )
+    fig = style_figure(fig, "Autonomous hybrid forecast", 470, "Value")
+    fig.update_xaxes(title="Date")
+    st.plotly_chart(fig, use_container_width=True, key="autonomous-hybrid-forecast")
+
+    residual_fig = go.Figure()
+    residual_fig.add_trace(
+        go.Scatter(
+            x=future_dates,
+            y=correction,
+            mode="lines+markers",
+            name="Residual correction",
+            line=dict(color="#d17b49", width=2),
+        )
+    )
+    residual_fig.add_hline(y=0, line_dash="dot", line_color="#94a3b8")
+    residual_fig = style_figure(residual_fig, "Residual correction", 300, "Correction")
+    residual_fig.update_xaxes(title="Date")
+    st.plotly_chart(residual_fig, use_container_width=True, key="autonomous-hybrid-residual")
+
+    table = pd.DataFrame(
+        {
+            "Date": future_dates,
+            "BaseForecast": base_point,
+            "ResidualForecast": correction,
+            "HybridForecast": point,
+        }
+    )
+    if result.quantiles is not None:
+        bounds = result.get_interval(ui_config.interval_coverage)
+        if bounds is not None:
+            lower, upper = bounds
+            table[f"Lower_{int(ui_config.interval_coverage * 100)}"] = lower[0]
+            table[f"Upper_{int(ui_config.interval_coverage * 100)}"] = upper[0]
+    st.download_button(
+        "Download hybrid forecast CSV",
+        data=table.to_csv(index=False).encode("utf-8"),
+        file_name="autonomous_hybrid_forecast.csv",
+        mime="text/csv",
+        key="download-autonomous-hybrid",
+    )
+    st.dataframe(table, use_container_width=True, hide_index=True)
+
+    with st.expander("Candidate search details"):
+        st.markdown("**Base-model candidates**")
+        st.dataframe(
+            pd.DataFrame([score.__dict__ for score in hybrid.base_candidates]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("**Residual-model candidates**")
+        st.dataframe(
+            pd.DataFrame([score.__dict__ for score in hybrid.residual_candidates]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        if hybrid.failures:
+            st.markdown("**Candidate failures**")
+            for failure in hybrid.failures:
+                st.text(failure)
+
+
 def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str]) -> None:
     st.markdown("### 3. Forecast")
     service: ForecastingService = st.session_state.service
@@ -891,6 +1193,10 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
     effective_horizon = rec_horizon if ui_config.autopilot else ui_config.horizon
 
     st.markdown(f'<div class="callout">Recommended horizon for <b>{stats["freq_label"]}</b> data is <b>{rec_label}</b>. Autopilot is <b>{"on" if ui_config.autopilot else "off"}</b>, so effective horizon is <b>{effective_horizon}</b> step(s).</div>', unsafe_allow_html=True)
+
+    if ui_config.strategy == "Autonomous hybrid":
+        render_hybrid_forecast(ui_config, effective_horizon, prof)
+        return
 
     left, right = st.columns([2, 1])
     run_manual = left.button("▶️ Run forecast", type="primary", use_container_width=True)
@@ -1035,6 +1341,104 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
 
 def render_tab_evaluation(ui_config: ForecastConfigUI, selected_models: list[str]) -> None:
     st.markdown("### 4. Evaluation")
+    hybrid = st.session_state.get("hybrid_result")
+    if ui_config.strategy == "Autonomous hybrid":
+        profile = st.session_state.get("profile_results") or {}
+        primary = profile.get("primary_target")
+        stats = profile.get("targets", {}).get(primary, {}).get("basic_stats", {})
+        recommended, _ = recommended_horizon(
+            stats.get("inferred_frequency", ""),
+            len(st.session_state.df) if st.session_state.get("df") is not None else 0,
+        )
+        horizon = recommended if ui_config.autopilot else ui_config.horizon
+        parsed_data = st.session_state.get("parsed_data")
+        expected_key = (
+            hybrid_run_cache_key(parsed_data, horizon, ui_config)
+            if parsed_data is not None
+            else None
+        )
+        if hybrid is None or st.session_state.get("hybrid_cache_key") != expected_key:
+            st.info("Run the autonomous hybrid forecast to see its evaluation.")
+            return
+
+        st.markdown("#### Hybrid selection and holdout evaluation")
+        st.caption(
+            "Base and residual candidates are ranked by rolling-origin MAE, with RMSE as the tie-breaker. "
+            "Only an untouched final horizon is described as independent holdout performance."
+        )
+        left, right = st.columns(2)
+        left.metric("Selected base model", hybrid.base_model_key)
+        right.metric(
+            "Selected residual model",
+            hybrid.residual_model_key or "Base-only fallback",
+        )
+        st.metric(
+            "Usable out-of-sample residual observations",
+            f"{hybrid.residual_observations:,}",
+        )
+        if hybrid.residual_validation is not None:
+            st.markdown("##### Model-selection folds (same timestamps)")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Forecast": "Base only",
+                            "MAE": hybrid.base_validation.mae,
+                            "RMSE": hybrid.base_validation.rmse,
+                        },
+                        {
+                            "Forecast": "Hybrid",
+                            "MAE": hybrid.residual_validation.mae,
+                            "RMSE": hybrid.residual_validation.rmse,
+                        },
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        if hybrid.holdout_metrics:
+            holdout = hybrid.holdout_metrics
+            holdout_rows = [
+                {
+                    "Forecast": "Base only",
+                    "MAE": holdout["base_mae"],
+                    "RMSE": holdout["base_rmse"],
+                }
+            ]
+            if holdout["hybrid_mae"] is not None:
+                holdout_rows.append(
+                    {
+                        "Forecast": "Hybrid",
+                        "MAE": holdout["hybrid_mae"],
+                        "RMSE": holdout["hybrid_rmse"],
+                    }
+                )
+            st.dataframe(
+                pd.DataFrame(holdout_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info(
+                "No independent horizon-sized holdout was available; component scores are "
+                "selection/tuning metrics."
+            )
+        st.markdown("##### Base-model candidates")
+        st.dataframe(
+            pd.DataFrame([score.__dict__ for score in hybrid.base_candidates]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.markdown("##### Residual-model candidates")
+        st.dataframe(
+            pd.DataFrame([score.__dict__ for score in hybrid.residual_candidates]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        for warning in dict.fromkeys((*hybrid.warnings, *hybrid.result.warnings)):
+            st.warning(warning)
+        return
+
     jobs = st.session_state.get("forecast_jobs", {})
     meta = st.session_state.get("run_metadata", {})
     backtest_results = st.session_state.get("backtest_results", {})

@@ -1,9 +1,12 @@
 """Unit tests for T0-Gamma adapter quantile handling."""
 
+from types import SimpleNamespace
+
 import numpy as np
-import pytest
+import pandas as pd
 
 from forecasting.adapters.t0 import T0GammaAdapter
+from forecasting.contracts import ForecastRequest
 
 
 def test_t0_native_quantile_levels():
@@ -18,7 +21,7 @@ def test_t0_native_quantile_levels():
     )
 
     assert caps.native_quantile_levels == expected, \
-        f"Native quantile levels should match official T0 documentation"
+        "Native quantile levels should match official T0 documentation"
 
 
 def test_t0_covariate_support_enabled():
@@ -41,3 +44,37 @@ def test_t0_has_interpolation_method():
     # The _interpolate_quantiles method should exist for interpolation
     assert hasattr(adapter, '_interpolate_quantiles'), \
         "T0 adapter should have _interpolate_quantiles method for quantile interpolation"
+
+
+def test_t0_passes_historical_and_future_known_covariates_to_model():
+    import torch
+
+    history = pd.date_range("2024-01-01", periods=4, freq="D")
+    known_history = np.array([[10.0, 11.0, 12.0, 13.0]])
+    known_future = np.array([[14.0, 15.0]])
+    request = ForecastRequest(
+        target_history=np.arange(4, dtype=float).reshape(1, -1),
+        history_index=history,
+        target_names=("y",),
+        horizon=2,
+        future_index=pd.date_range("2024-01-05", periods=2, freq="D"),
+        known_covariates_history=known_history,
+        known_covariates_future=known_future,
+        quantile_levels=(0.1, 0.5, 0.9),
+    )
+
+    class Model:
+        def parameters(self):
+            return iter((torch.nn.Parameter(torch.zeros(1)),))
+
+        def predict(self, context, horizon, quantile_levels, future_covariates):
+            np.testing.assert_array_equal(
+                future_covariates.cpu().numpy(),
+                np.concatenate((known_history, known_future), axis=1)[None, :, :],
+            )
+            return SimpleNamespace(
+                quantiles=torch.zeros((1, horizon, len(quantile_levels))),
+                median=torch.zeros((1, horizon)),
+            )
+
+    T0GammaAdapter()._predict_impl(request, Model())

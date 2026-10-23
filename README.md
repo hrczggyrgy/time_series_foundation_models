@@ -25,16 +25,16 @@ A modular zero-shot forecasting workbench with unified probabilistic outputs, le
 
 | Model | Parameters | License | Multivariate | Covariates | Context | Horizon | Quantiles |
 |-------|------------|---------|--------------|------------|---------|---------|-----------|
-| TimesFM 2.5 | 200M | Apache-2.0 | No | Future-only | 16k | 512 | 9 (0.1-0.9) |
+| TimesFM 2.5 | 200M | Apache-2.0 | No | No (current adapter does not consume covariates) | 16k | 512 | 9 (0.1-0.9) |
 | TiRex-2 | 82M active | Apache-2.0 | Yes | Past and future-known | 32k | 1024 | 9 (0.1-0.9) |
 | Chronos-T5 Small | 20M | Apache-2.0 | Yes¹ | No | 512 | Model-dependent | Sampled |
 | TimesFM 3.0 | 330M | Non-commercial v1.0 | Yes | Past and future-known | 15,360 | 1024 | 9 (0.1-0.9) |
 | Moirai 1.1 Small | 14M | See model card | No | No | 2k | Configured horizon | Sampled |
-| t0-gamma | 100M+ | Apache-2.0 | Yes | No² | 512 | 1024 | 21 (0.01-0.99) |
-| Timestral 209M | 209M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
-| Timestral 28M | 28M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
-| Timestral 123M | 123M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
-| Timestral 5M | 5M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
+| t0-gamma | 100M+ | Apache-2.0 | Yes | Past and future-known | 512 | 1024 | 21 (0.01-0.99) |
+| Timestral 209M | 209M | Modified MIT ($20M cap) | Yes | No (current adapter does not consume covariates) | 32k | 1024 | 21 (0.01-0.99) |
+| Timestral 28M | 28M | Modified MIT ($20M cap) | Yes | No (current adapter does not consume covariates) | 32k | 1024 | 21 (0.01-0.99) |
+| Timestral 123M | 123M | Modified MIT ($20M cap) | Yes | No (current adapter does not consume covariates) | 32k | 1024 | 21 (0.01-0.99) |
+| Timestral 5M | 5M | Modified MIT ($20M cap) | Yes | No (current adapter does not consume covariates) | 32k | 1024 | 21 (0.01-0.99) |
 | STL Decomposition | — | Apache-2.0 (code) | Yes¹ | No | At least 4 | Any | None |
 
 ¹ STL models each target independently; it extrapolates the decomposed trend and repeats the final seasonal cycle. It provides deterministic point forecasts without prediction intervals.
@@ -50,7 +50,17 @@ The default `timesfm25` profile includes TimesFM 2.5, TiRex-2, and Chronos. Time
 - Unified probabilistic interface — supported models provide quantiles from native outputs or forecast samples
 - Multi-model comparison — run identical backtests across models with controlled context/horizon
 - Multivariate support — available for TiRex-2 and TimesFM 3.0; other adapters may forecast targets independently
-- Covariates — supported by TiRex-2 and TimesFM 3.0
+- Covariates — supported by TiRex-2, TimesFM 3.0, and t0-gamma; adapters that do not consume the inputs do not advertise support
+
+### Autonomous Hybrid Forecasting
+- Select **Autonomous hybrid** in the sidebar to search installed, non-experimental models automatically; manual model selections are not used for this strategy.
+- Base candidates are ranked on shared chronological rolling-origin folds by original-scale MAE, with RMSE as the tie-breaker.
+- The chosen base model creates up to 20 blocked, expanding-window out-of-sample forecasts. Residual targets are `actual - base_prediction`, and imputed observations are excluded.
+- Residual candidates include regularized native exogenous regression and ARX models. Installed TimesFM 3.0, TiRex-2, and t0-gamma adapters are also eligible because their inference paths consume both historical and future known covariates.
+- Residual candidates are ranked by end-to-end hybrid accuracy on the original target scale. A final horizon-sized holdout is kept out of selection when enough history is available; shorter series are explicitly labeled as tuning-only.
+- The result shows component forecasts, candidate scores and failures, residual count, holdout performance, and a CSV with base, correction, and hybrid forecasts.
+- If residual training or inference fails, the app reports a base-only fallback. If base quantiles exist, shifting them by the residual point correction is labeled an approximate interval; residual uncertainty is not included.
+- The search runs sequentially and is cached for the current prepared data, horizon, and relevant settings. Change settings or data and run it again to refresh the result.
 
 ### Data & Diagnostics
 - CSV upload with auto column detection (date + multiple targets)

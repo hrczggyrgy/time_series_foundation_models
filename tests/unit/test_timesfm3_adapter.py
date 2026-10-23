@@ -35,3 +35,35 @@ def test_timesfm3_maps_native_forecast_to_common_contract():
     assert result.quantiles is not None
     assert result.quantiles.shape == (2, 3, 9)
     np.testing.assert_array_equal(result.quantile_levels, levels)
+
+
+def test_timesfm3_passes_historical_and_future_known_covariates_to_model():
+    history = pd.date_range("2024-01-01", periods=12, freq="D")
+    known_history = np.arange(12, dtype=float).reshape(1, -1)
+    known_future = np.array([[12.0, 13.0, 14.0]])
+    request = ForecastRequest(
+        target_history=np.arange(12, dtype=float).reshape(1, -1),
+        history_index=history,
+        target_names=("y",),
+        horizon=3,
+        future_index=pd.date_range("2024-01-13", periods=3, freq="D"),
+        known_covariates_history=known_history,
+        known_covariates_future=known_future,
+        quantile_levels=(0.1, 0.5, 0.9),
+    )
+
+    class Model:
+        config = SimpleNamespace(quantiles=np.asarray(request.quantile_levels))
+
+        def predict(self, **kwargs):
+            np.testing.assert_array_equal(
+                kwargs["past_future_covariates"],
+                np.concatenate((known_history, known_future), axis=1),
+            )
+            levels = self.config.quantiles
+            return SimpleNamespace(
+                forecast=np.zeros((1, 3)),
+                quantiles=np.broadcast_to(levels, (1, 3, len(levels))).copy(),
+            )
+
+    TimesFM3Adapter()._predict_impl(request, Model())

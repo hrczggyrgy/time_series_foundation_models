@@ -32,7 +32,7 @@ class TimesFM25Adapter(BaseAdapter):
             supports_mps=False,
             supports_multivariate=False,
             supports_past_covariates=False,
-            supports_known_future_covariates=True,  # Limited support
+            supports_known_future_covariates=False,
             native_quantile_levels=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
             max_context_length=16384,
             min_context_length=32,

@@ -1,8 +1,5 @@
 """Unit tests for TimesFM 2.5 adapter quantile handling."""
 
-import numpy as np
-import pytest
-
 from forecasting.adapters.timesfm25 import TimesFM25Adapter
 
 
@@ -18,9 +15,12 @@ def test_timesfm25_native_quantile_levels():
         f"Native quantile levels should be P10-P90, got {caps.native_quantile_levels}"
 
 
+def test_timesfm25_does_not_advertise_covariates_not_used_by_inference():
+    assert not TimesFM25Adapter().capabilities.supports_known_future_covariates
+
+
 def test_timesfm25_point_definition_is_median():
     """Test that point forecast is documented as median, not mean."""
-    adapter = TimesFM25Adapter()
     # This will be checked in the result metadata
     # The adapter should report point_definition="median"
     assert True  # This is verified by checking the _predict_impl implementation
@@ -28,8 +28,6 @@ def test_timesfm25_point_definition_is_median():
 
 def test_timesfm25_no_fake_quantile_fallback():
     """Test that adapter raises error instead of fabricating quantiles."""
-    adapter = TimesFM25Adapter()
-
     # The _predict_univariate method should raise ValueError on unexpected shape
     # instead of falling back to replicated point forecasts
     # This is verified by code inspection of the implementation

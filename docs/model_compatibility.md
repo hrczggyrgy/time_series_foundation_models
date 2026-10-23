@@ -22,7 +22,7 @@
 | **Context Limit** | 16,384 (compiled in 32-step increments) |
 | **Horizon Behavior** | Up to 512 recommended; compiled in 32-step increments; autoregressive patch decoding |
 | **Native Quantile Levels** | 10 deciles: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9 (plus mean) |
-| **Covariate Support** | Limited future-known covariates only (TimesFM 2.x) |
+| **Covariate Support** | None in the current adapter; declared inputs are not consumed by inference |
 | **Source-Code License** | Apache-2.0 |
 | **Weights License** | Apache-2.0 |
 | **Verification Date** | 2026-10-22 |
@@ -100,7 +100,7 @@ TimesFM 2.5 and 3.0 use different versions of the same `timesfm` distribution an
 | **Context Limit** | 32,768 steps |
 | **Horizon Behavior** | Up to 1,024 steps in single forward pass |
 | **Native Quantile Levels** | 21 quantiles (exact levels need verification) |
-| **Covariate Support** | Full: multivariate targets + past-only + known-future covariates |
+| **Covariate Support** | None in the current adapter; its inference path only passes target history |
 | **Source-Code License** | Apache-2.0 |
 | **Weights License** | **Modified MIT** — **Revenue cap**: $20M global consolidated monthly revenue |
 | **Verification Date** | 2026-10-22 |
@@ -149,7 +149,7 @@ lower, upper = forecast.quantile(0.1), forecast.quantile(0.9)
 | **Context Limit** | 32,768 steps (same architecture) |
 | **Horizon Behavior** | Up to 1,024 steps |
 | **Native Quantile Levels** | 21 quantiles (same as 209M) |
-| **Covariate Support** | Full (same as 209M) |
+| **Covariate Support** | None (same adapter limitation as 209M) |
 | **Source-Code License** | Apache-2.0 |
 | **Weights License** | **Modified MIT** — **Revenue cap**: $20M global consolidated monthly revenue |
 | **Verification Date** | 2026-10-22 |

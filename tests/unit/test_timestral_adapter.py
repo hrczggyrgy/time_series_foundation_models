@@ -1,27 +1,20 @@
 """Unit tests for Timestral adapter quantile handling."""
 
-import numpy as np
-import pytest
-
 from forecasting.adapters.timestral import TimestralAdapter
 
 
-def test_timestral_covariate_support_enabled():
-    """Test that covariate support is now enabled."""
-    adapter = TimestralAdapter()
-    caps = adapter.capabilities
+def test_timestral_does_not_advertise_unimplemented_covariate_support():
+    """Timestral inference currently does not pass covariates to the model."""
+    caps = TimestralAdapter().capabilities
 
     assert caps.supports_multivariate, \
         "Multivariate support should be enabled"
-    assert caps.supports_past_covariates, \
-        "Past covariates should be enabled"
-    assert caps.supports_known_future_covariates, \
-        "Known future covariates should be enabled"
+    assert not caps.supports_past_covariates
+    assert not caps.supports_known_future_covariates
 
 
 def test_timestral_quantile_fallback_to_median():
     """Test that adapter falls back to median when quantile computation fails."""
-    adapter = TimestralAdapter()
     # The _predict_impl method now catches exceptions and falls back to median
     # instead of raising ValueError. This is verified by code inspection.
     assert True  # Verified by checking _predict_impl implementation
@@ -39,4 +32,4 @@ def test_timestral_native_quantile_levels():
     )
 
     assert caps.native_quantile_levels == expected, \
-        f"Native quantile levels should match Timestral documentation"
+        "Native quantile levels should match Timestral documentation"
