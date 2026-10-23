@@ -1,12 +1,14 @@
 """Unit tests for evaluation metrics."""
 
 import math
+
 import numpy as np
 import pytest
 
 from forecasting.evaluation.metrics import (
     PointMetrics,
     aggregate_metrics_across_windows,
+    compute_crps,
     compute_point_metrics,
 )
 
@@ -35,6 +37,14 @@ def test_compute_point_metrics_with_nan():
     # Should exclude NaN pairs
     assert not math.isnan(metrics.mae)
     assert not math.isnan(metrics.rmse)
+
+
+def test_compute_crps_uses_supported_trapezoidal_integration():
+    actuals = np.array([1.0])
+    quantiles = np.array([[[0.5, 1.0, 1.5]]])
+    levels = np.array([0.1, 0.5, 0.9])
+
+    assert compute_crps(actuals, quantiles, levels) == pytest.approx(0.04)
 
 
 def test_aggregate_metrics_across_windows_basic():

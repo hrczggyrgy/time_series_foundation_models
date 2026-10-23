@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy.integrate import trapezoid
 
 
 @dataclass(frozen=True)
@@ -229,7 +230,7 @@ def compute_crps(actuals: np.ndarray, quantiles: np.ndarray, quantile_levels: np
 
             # CRPS = 2 * integral of pinball loss over τ in [0,1]
             # Trapezoidal rule
-            crps_val = 2 * np.trapz(pinball, quantile_levels)
+            crps_val = 2 * trapezoid(pinball, quantile_levels)
             crps_values.append(crps_val)
 
     return float(np.mean(crps_values)) if crps_values else math.nan
