@@ -81,12 +81,13 @@ A modular, extensible zero-shot forecasting workbench supporting 7 foundation mo
 git clone https://github.com/hrczggyrgy/time_series_foundation_models.git
 cd time_series_foundation_models
 
-# Create venv & install (use uv for speed)
-uv venv && source venv/bin/activate
+# Create one Python 3.11 environment (matches the Docker image) and install dependencies
+uv venv --seed venv --python 3.11
+source venv/bin/activate
 uv pip install -r requirements.txt
 
 # Or with pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 
 # Run
 streamlit run app.py

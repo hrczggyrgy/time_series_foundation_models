@@ -67,7 +67,8 @@ html, body, [data-testid="stAppViewContainer"] { font-family: Inter, Segoe UI, A
 .badge-red { background: #fee2e2; color: #991b1b; }
 .section-divider { border: none; border-top: 1px solid #e8e6e2; margin: 1.2rem 0 1rem 0; }
 .small-note { color: #6b7280; font-size: 0.92rem; }
-.step-chip { display: inline-block; padding: 0.32rem 0.7rem; margin-right: 0.45rem; border-radius: 9999px; background: #ece8ff; color: #4338ca; font-size: 0.8rem; font-weight: 700; }
+.stRadio [role="radiogroup"] { gap: 0.5rem; }
+.stRadio [role="radiogroup"] label { padding: 0.35rem 0.85rem; border: 1px solid #e5e7eb; border-radius: 9999px; background: #fff; }
 .stButton button, .stDownloadButton button { border-radius: 10px; font-weight: 600; }
 .stButton button[kind="primary"] { background: #111827; border-color: #111827; }
 </style>
@@ -123,6 +124,7 @@ def clear_results(keep_signature: bool = True) -> None:
         st.session_state["raw_signature"] = signature
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def sample_csv_bytes() -> bytes:
     return generate_demo_data().head(90).to_csv(index=False).encode()
 
@@ -573,7 +575,7 @@ def render_tab_data(data_source: str, ui_config: ForecastConfigUI) -> None:
     # Support multiple targets in future - for now single target
     target_cols = [target_col]
 
-    with st.expander("Preview raw data", expanded=True):
+    with st.expander("Preview raw data", expanded=False):
         st.dataframe(raw_df.head(25), use_container_width=True, height=240)
         st.caption(f"Rows: {len(raw_df):,} · Columns: {len(raw_df.columns)}")
 
@@ -1072,13 +1074,23 @@ def main() -> None:
 
     ui_config, data_source, selected_models = render_sidebar(st.session_state.profile_results)
 
-    st.markdown('<div class="small-note"><span class="step-chip">1 Data</span><span class="step-chip">2 Diagnostics</span><span class="step-chip">3 Forecast</span><span class="step-chip">4 Evaluation</span><span class="step-chip">5 Comparison</span></div>', unsafe_allow_html=True)
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Data", "Diagnostics", "Forecast", "Evaluation", "Comparison"])
-    with tab1: render_tab_data(data_source, ui_config)
-    with tab2: render_tab_diagnostics()
-    with tab3: render_tab_forecast(ui_config, selected_models)
-    with tab4: render_tab_evaluation(ui_config, selected_models)
-    with tab5: render_tab_comparison(selected_models)
+    section = st.radio(
+        "Workflow section",
+        ["Data", "Diagnostics", "Forecast", "Evaluation", "Comparison"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="active_section",
+    )
+    if section == "Data":
+        render_tab_data(data_source, ui_config)
+    elif section == "Diagnostics":
+        render_tab_diagnostics()
+    elif section == "Forecast":
+        render_tab_forecast(ui_config, selected_models)
+    elif section == "Evaluation":
+        render_tab_evaluation(ui_config, selected_models)
+    else:
+        render_tab_comparison(selected_models)
 
 
 if __name__ == "__main__":

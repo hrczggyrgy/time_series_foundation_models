@@ -61,6 +61,7 @@ coverage.xml
 # Environments
 .env
 .venv
+.venv*/
 env/
 venv/
 ENV/
@@ -70,6 +71,9 @@ venv.bak/
 # IDE
 .idea/
 .vscode/
+!.vscode/
+.vscode/*
+!.vscode/settings.json
 *.swp
 *.swo
 *~
