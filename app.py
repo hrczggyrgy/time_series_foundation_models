@@ -133,8 +133,10 @@ def init_session_state() -> None:
         "validation_report": None,
         "profile_results": None,
         "forecast_job": None,
+        "forecast_jobs": {},
         "forecast_run_errors": {},
         "backtest_result": None,
+        "backtest_results": {},
         "run_metadata": None,
         "analysis_ready": False,
         "service": None,
@@ -157,8 +159,17 @@ def clear_results(keep_signature: bool = True) -> None:
         "forecast_run_errors",
     ]:
         st.session_state[key] = None if key != "analysis_ready" else False
+    clear_forecast_results()
     if keep_signature:
         st.session_state["raw_signature"] = signature
+
+
+def clear_forecast_results() -> None:
+    """Clear forecast outputs that are tied to the previously prepared data."""
+    st.session_state["forecast_jobs"] = {}
+    st.session_state["backtest_results"] = {}
+    st.session_state["forecast_run_errors"] = {}
+    st.session_state["run_metadata"] = None
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -763,7 +774,7 @@ def render_tab_data(data_source: str, ui_config: ForecastConfigUI) -> None:
         st.session_state.profile_results = profile_timeseries(parsed.df, parsed.target_columns)
         st.session_state.forecast_job = None
         st.session_state.backtest_result = None
-        st.session_state.run_metadata = None
+        clear_forecast_results()
         st.session_state.analysis_ready = True
 
     if st.session_state.validation_report is None or st.session_state.profile_results is None:
@@ -949,11 +960,14 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
                     "Their errors are listed in Evaluation."
                 )
 
-    jobs = st.session_state.get("forecast_jobs", {})
+    jobs = st.session_state.get("forecast_jobs") or {}
     if not jobs:
         return
 
-    meta = st.session_state.run_metadata
+    meta = st.session_state.get("run_metadata") or {}
+    if not meta:
+        st.info("Forecast metadata is unavailable. Run the forecast again to refresh the results.")
+        return
 
     # Display results for each model
     for model_key, job in jobs.items():
