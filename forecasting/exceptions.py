@@ -60,43 +60,6 @@ class CapabilityNotSupportedError(ForecastingError):
         self.capability = capability
 
 
-class LicensePolicyError(ForecastingError):
-    """Model not allowed under current license policy."""
-
-    def __init__(
-        self,
-        model_key: str,
-        policy: str,
-        *,
-        details: dict[str, Any] | None = None,
-    ):
-        super().__init__(
-            f"Model '{model_key}' is not allowed under license policy '{policy}'. "
-            f"Change policy to 'research' to enable restricted models.",
-            details=details,
-        )
-        self.model_key = model_key
-        self.policy = policy
-
-
-class LicenseAcknowledgmentRequiredError(ForecastingError):
-    """Restricted model requires explicit license acknowledgment."""
-
-    def __init__(
-        self,
-        model_key: str,
-        notice: str,
-        *,
-        details: dict[str, Any] | None = None,
-    ):
-        super().__init__(
-            f"Model '{model_key}' requires license acknowledgment:\n{notice}",
-            details=details,
-        )
-        self.model_key = model_key
-        self.notice = notice
-
-
 class InferenceError(ForecastingError):
     """Error during forecast generation."""
 

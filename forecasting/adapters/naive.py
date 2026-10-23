@@ -38,7 +38,6 @@ class NaiveAdapter(BaseAdapter):
             max_horizon=None,
             compiles_context_horizon=False,
             supports_batch_inference=True,
-            license_policy="permissive",
             license_notice="No model weights — algorithmic baseline.",
         )
 
@@ -97,7 +96,6 @@ class SeasonalNaiveAdapter(BaseAdapter):
             max_horizon=None,
             compiles_context_horizon=False,
             supports_batch_inference=True,
-            license_policy="permissive",
             license_notice="No model weights — algorithmic baseline.",
         )
 

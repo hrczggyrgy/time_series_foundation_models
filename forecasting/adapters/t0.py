@@ -43,7 +43,6 @@ class T0GammaAdapter(BaseAdapter):
             max_horizon=1024,
             compiles_context_horizon=False,
             supports_batch_inference=True,
-            license_policy="permissive",
             license_notice="Apache-2.0 (weights and code). Requires tfc-t0[torch]>=0.6.0.",
         )
 

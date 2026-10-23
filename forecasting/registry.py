@@ -1,24 +1,12 @@
-"""Model registry with license policy enforcement."""
+"""Registry of available forecasting models."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any
 
 from forecasting.contracts import ForecastAdapter, ModelCapabilities, RuntimeConfig
-from forecasting.exceptions import (
-    LicenseAcknowledgmentRequiredError,
-    LicensePolicyError,
-    ModelNotAvailableError,
-)
-
-
-class LicensePolicy(str, Enum):
-    """Application license policy modes."""
-
-    PERMISSIVE_ONLY = "permissive_only"
-    RESEARCH = "research"
+from forecasting.exceptions import ModelNotAvailableError
 
 
 @dataclass(frozen=True)
@@ -29,7 +17,6 @@ class ModelRegistryEntry:
     display_name: str
     adapter_class: str  # Fully qualified class name for lazy loading
     capabilities: ModelCapabilities
-    license_policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY
     # Optional: minimum package version, extra dependencies
     min_package_version: str = ""
     extra_deps: tuple[str, ...] = ()
@@ -37,11 +24,7 @@ class ModelRegistryEntry:
 
 
 class ModelRegistry:
-    """Central registry of all available model adapters.
-
-    Policy and acknowledgments are passed per-call to support session-specific
-    access control while sharing the model cache globally.
-    """
+    """Central registry of all available model adapters."""
 
     def __init__(self):
         self._entries: dict[str, ModelRegistryEntry] = {}
@@ -78,10 +61,8 @@ class ModelRegistry:
                     max_horizon=512,
                     compiles_context_horizon=True,
                     supports_batch_inference=True,
-                    license_policy=LicensePolicy.PERMISSIVE_ONLY,
                     license_notice="Apache-2.0 (weights and code)",
                 ),
-                license_policy=LicensePolicy.PERMISSIVE_ONLY,
                 min_package_version="timesfm[torch]==2.0.2",
             )
         )
@@ -109,7 +90,6 @@ class ModelRegistry:
                     max_horizon=1024,
                     compiles_context_horizon=False,
                     supports_batch_inference=True,
-                    license_policy=LicensePolicy.RESEARCH,
                     license_notice=(
                         "TimesFM Non-Commercial License v1.0: "
                         "Weights restricted to non-commercial, non-production use only. "
@@ -117,7 +97,6 @@ class ModelRegistry:
                         "Source code is Apache-2.0. ADAPTER NOT YET IMPLEMENTED."
                     ),
                 ),
-                license_policy=LicensePolicy.RESEARCH,
                 min_package_version="timesfm[torch]>=3.0.0",
                 experimental=True,
             )
@@ -149,7 +128,6 @@ class ModelRegistry:
                     max_horizon=1024,
                     compiles_context_horizon=False,
                     supports_batch_inference=True,
-                    license_policy=LicensePolicy.RESEARCH,
                     license_notice=(
                         "Modified MIT License with revenue restriction: "
                         "You are not authorized to use this model if your company's (or employer's) "
@@ -159,7 +137,6 @@ class ModelRegistry:
                         "Inference code is Apache-2.0."
                     ),
                 ),
-                license_policy=LicensePolicy.RESEARCH,
                 min_package_version="timestral>=0.1.0",
             )
         )
@@ -190,7 +167,6 @@ class ModelRegistry:
                     max_horizon=1024,
                     compiles_context_horizon=False,
                     supports_batch_inference=True,
-                    license_policy=LicensePolicy.RESEARCH,
                     license_notice=(
                         "Modified MIT License with revenue restriction: "
                         "You are not authorized to use this model if your company's (or employer's) "
@@ -200,7 +176,6 @@ class ModelRegistry:
                         "Inference code is Apache-2.0."
                     ),
                 ),
-                license_policy=LicensePolicy.RESEARCH,
                 min_package_version="timestral>=0.1.0",
             )
         )
@@ -231,7 +206,6 @@ class ModelRegistry:
                     max_horizon=1024,
                     compiles_context_horizon=False,
                     supports_batch_inference=True,
-                    license_policy=LicensePolicy.RESEARCH,
                     license_notice=(
                         "Modified MIT License with revenue restriction: "
                         "You are not authorized to use this model if your company's (or employer's) "
@@ -241,7 +215,6 @@ class ModelRegistry:
                         "Inference code is Apache-2.0."
                     ),
                 ),
-                license_policy=LicensePolicy.RESEARCH,
                 min_package_version="timestral>=0.1.0",
             )
         )
@@ -272,7 +245,6 @@ class ModelRegistry:
                     max_horizon=1024,
                     compiles_context_horizon=False,
                     supports_batch_inference=True,
-                    license_policy=LicensePolicy.RESEARCH,
                     license_notice=(
                         "Modified MIT License with revenue restriction: "
                         "You are not authorized to use this model if your company's (or employer's) "
@@ -282,7 +254,6 @@ class ModelRegistry:
                         "Inference code is Apache-2.0."
                     ),
                 ),
-                license_policy=LicensePolicy.RESEARCH,
                 min_package_version="timestral>=0.1.0",
             )
         )
@@ -314,10 +285,8 @@ class ModelRegistry:
                     max_horizon=1024,
                     compiles_context_horizon=False,
                     supports_batch_inference=True,
-                    license_policy=LicensePolicy.PERMISSIVE_ONLY,
                     license_notice="Apache-2.0 (weights and code). Requires tfc-t0[torch]>=0.6.0.",
                 ),
-                license_policy=LicensePolicy.PERMISSIVE_ONLY,
                 min_package_version="tfc-t0[torch]>=0.6.0",
             )
         )
@@ -345,10 +314,8 @@ class ModelRegistry:
                     max_horizon=None,
                     compiles_context_horizon=False,
                     supports_batch_inference=True,
-                    license_policy=LicensePolicy.PERMISSIVE_ONLY,
                     license_notice="No model weights — algorithmic baseline.",
                 ),
-                license_policy=LicensePolicy.PERMISSIVE_ONLY,
             )
         )
 
@@ -375,10 +342,8 @@ class ModelRegistry:
                     max_horizon=None,
                     compiles_context_horizon=False,
                     supports_batch_inference=True,
-                    license_policy=LicensePolicy.PERMISSIVE_ONLY,
                     license_notice="No model weights — algorithmic baseline.",
                 ),
-                license_policy=LicensePolicy.PERMISSIVE_ONLY,
             )
         )
 
@@ -390,11 +355,10 @@ class ModelRegistry:
         """Get registry entry by key."""
         return self._entries.get(model_key)
 
-    def list_available(self, policy: LicensePolicy, include_experimental: bool = False) -> list[ModelRegistryEntry]:
-        """List models available under the given policy.
+    def list_available(self, include_experimental: bool = False) -> list[ModelRegistryEntry]:
+        """List registered models.
 
         Args:
-            policy: License policy filter (permissive_only or research)
             include_experimental: If True, include experimental/unimplemented models
 
         Returns:
@@ -404,39 +368,23 @@ class ModelRegistry:
         for entry in self._entries.values():
             if entry.capabilities.experimental and not include_experimental:
                 continue
-            if entry.license_policy == LicensePolicy.PERMISSIVE_ONLY:
-                available.append(entry)
-            elif policy == LicensePolicy.RESEARCH:
-                available.append(entry)
+            available.append(entry)
         return available
 
     def get_adapter(
         self,
         model_key: str,
         runtime_config: RuntimeConfig,
-        policy: LicensePolicy,
-        acknowledged: set[str] | None = None,
     ) -> ForecastAdapter:
         """Get or create adapter instance for a model.
 
         Args:
             model_key: Model identifier
             runtime_config: Runtime configuration
-            policy: License policy for this session
-            acknowledged: Set of model keys acknowledged by the user in this session
         """
-        acknowledged = acknowledged or set()
         entry = self._entries.get(model_key)
         if not entry:
             raise ModelNotAvailableError(model_key, "unknown model key")
-
-        # Check license policy
-        if entry.license_policy == LicensePolicy.RESEARCH and policy != LicensePolicy.RESEARCH:
-            raise LicensePolicyError(model_key, policy.value)
-
-        # Check acknowledgment for restricted models
-        if entry.license_policy == LicensePolicy.RESEARCH and model_key not in acknowledged:
-            raise LicenseAcknowledgmentRequiredError(model_key, entry.capabilities.license_notice)
 
         # Create runtime config with model_key for adapters that need it (e.g., Timestral)
         adapted_runtime = runtime_config

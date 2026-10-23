@@ -83,7 +83,6 @@ class TimestralAdapter(BaseAdapter):
                 max_horizon=1024,
                 compiles_context_horizon=False,
                 supports_batch_inference=True,
-                license_policy="restricted",
                 license_notice=(
                     "Modified MIT License with revenue restriction: "
                     "You are not authorized to use this model if your company's (or employer's) "
@@ -114,7 +113,6 @@ class TimestralAdapter(BaseAdapter):
             max_horizon=1024,
             compiles_context_horizon=False,
             supports_batch_inference=True,
-            license_policy="restricted",
             license_notice=(
                 "Modified MIT License with revenue restriction: "
                 "You are not authorized to use this model if your company's (or employer's) "

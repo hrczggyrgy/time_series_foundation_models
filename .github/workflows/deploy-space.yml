@@ -9,7 +9,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # lets the job request an OIDC token
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +20,7 @@ jobs:
 
       - name: Upload to Space
         env:
-          HF_OIDC_RESOURCE: spaces/hrczggyorgy/TSFMs_forecasting
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: >
           hf upload hrczggyorgy/TSFMs_forecasting . .
           --repo-type space

@@ -27,7 +27,7 @@ from forecasting.evaluation.backtesting import (
 )
 from forecasting.evaluation.metrics import ProbabilisticMetrics
 from forecasting.exceptions import ForecastingError
-from forecasting.registry import ModelRegistry, get_registry, LicensePolicy
+from forecasting.registry import ModelRegistry, get_registry
 from forecasting.reporting.exports import (
     export_backtest_long,
     export_backtest_summary,
@@ -57,7 +57,6 @@ class ForecastJob:
 class ForecastingService:
     """Main service for running forecasts and backtests.
 
-    Policy and acknowledgments are passed per-call for session isolation.
     """
 
     def __init__(
@@ -67,29 +66,26 @@ class ForecastingService:
         self.registry = get_registry()
         self.default_runtime = default_runtime or RuntimeConfig()
 
-    def list_models(self, policy: LicensePolicy, acknowledged: set[str] | None = None, include_experimental: bool = False) -> list[dict[str, Any]]:
+    def list_models(self, include_experimental: bool = False) -> list[dict[str, Any]]:
         """List available models with their capabilities."""
-        acknowledged = acknowledged or set()
-        entries = self.registry.list_available(policy, include_experimental=include_experimental)
+        entries = self.registry.list_available(include_experimental=include_experimental)
         return [
             {
                 "model_key": e.model_key,
                 "display_name": e.display_name,
-                "license_policy": e.license_policy.value,
                 "license_notice": e.capabilities.license_notice,
                 "supports_multivariate": e.capabilities.supports_multivariate,
                 "supports_covariates": e.capabilities.supports_past_covariates or e.capabilities.supports_known_future_covariates,
                 "max_context": e.capabilities.max_context_length,
                 "max_horizon": e.capabilities.max_horizon,
                 "native_quantiles": list(e.capabilities.native_quantile_levels),
-                "is_acknowledged": e.model_key in acknowledged,
             }
             for e in entries
         ]
 
-    def get_adapter(self, model_key: str, runtime_config: RuntimeConfig, policy: LicensePolicy, acknowledged: set[str] | None = None):
-        """Get adapter for a model with session-specific policy/acknowledgment."""
-        return self.registry.get_adapter(model_key, runtime_config, policy, acknowledged)
+    def get_adapter(self, model_key: str, runtime_config: RuntimeConfig):
+        """Get adapter for a model."""
+        return self.registry.get_adapter(model_key, runtime_config)
 
     def prepare_data(
         self,
@@ -135,8 +131,6 @@ class ForecastingService:
         model_key: str,
         parsed_data: ParsedData,
         horizon: int,
-        policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
-        acknowledged: set[str] | None = None,
         runtime_config: RuntimeConfig | None = None,
         business_days_only: bool = False,
         quantile_levels: tuple[float, ...] = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
@@ -148,7 +142,7 @@ class ForecastingService:
 
         # Get adapter
         runtime = runtime_config or self.default_runtime
-        adapter = self.registry.get_adapter(model_key, runtime, policy, acknowledged)
+        adapter = self.registry.get_adapter(model_key, runtime)
         load_time = time.time()
         timing["model_load_sec"] = load_time - start_time
 
@@ -265,12 +259,10 @@ class ForecastingService:
         expanding_window: bool = True,
         runtime_config: RuntimeConfig | None = None,
         quantile_levels: tuple[float, ...] = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
-        policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
-        acknowledged: set[str] | None = None,
     ) -> BacktestResult:
         """Run rolling-origin backtest."""
         runtime = runtime_config or self.default_runtime
-        adapter = self.registry.get_adapter(model_key, runtime, policy, acknowledged)
+        adapter = self.registry.get_adapter(model_key, runtime)
 
         df = parsed_data.df
         # Map original target column names to actual dataframe column names
@@ -325,8 +317,6 @@ class ForecastingService:
         runtime_config: RuntimeConfig | None = None,
         business_days_only: bool = False,
         quantile_levels: tuple[float, ...] = (0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95),
-        policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
-        acknowledged: set[str] | None = None,
     ) -> ForecastJob:
         """Run forecast and backtest in one call."""
         # Run forecast (uses all data)
@@ -337,8 +327,6 @@ class ForecastingService:
             runtime_config=runtime_config,
             business_days_only=business_days_only,
             quantile_levels=quantile_levels,
-            policy=policy,
-            acknowledged=acknowledged,
         )
 
         # Run backtest (uses rolling windows)
@@ -351,8 +339,6 @@ class ForecastingService:
                 n_windows=n_windows,
                 runtime_config=runtime_config,
                 quantile_levels=quantile_levels,
-                policy=policy,
-                acknowledged=acknowledged,
             )
             job.backtest = backtest
             job.timing["backtest_sec"] = time.time() - bt_start
@@ -427,8 +413,6 @@ class ForecastingService:
         runtime_config: RuntimeConfig | None = None,
         business_days_only: bool = False,
         quantile_levels: tuple[float, ...] = (0.1, 0.5, 0.9),  # Common 80% interval
-        policy: LicensePolicy = LicensePolicy.PERMISSIVE_ONLY,
-        acknowledged: set[str] | None = None,
         progress_callback: callable | None = None,
     ) -> ComparisonReport:
         """Compare multiple forecasting models on the same dataset.
@@ -443,8 +427,6 @@ class ForecastingService:
             runtime_config: Runtime configuration
             business_days_only: Whether to use business days only
             quantile_levels: Quantile levels for probabilistic forecasts
-            policy: License policy
-            acknowledged: Set of acknowledged restricted models
             progress_callback: Optional callback for progress updates (model_key, status)
 
         Returns:
@@ -503,7 +485,7 @@ class ForecastingService:
 
             try:
                 # Get adapter
-                adapter = self.registry.get_adapter(model_key, runtime, policy, acknowledged)
+                adapter = self.registry.get_adapter(model_key, runtime)
 
                 # Run backtest with shared splits
                 backtest = run_backtest(

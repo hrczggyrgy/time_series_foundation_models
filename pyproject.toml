@@ -42,7 +42,7 @@ permissive = [
     "tfc-t0[torch]>=0.6.0,<1.0",  # t0-gamma
 ]
 
-# Restricted foundation models (require license acknowledgment)
+# Foundation models with additional license terms
 restricted = [
     "timesfm[torch]>=3.0.0,<4.0",  # TimesFM 3.0 (non-commercial weights)
     "timestral @ git+https://github.com/mistralai/timestral@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff",  # Timestral family (Modified MIT, $20M revenue cap)

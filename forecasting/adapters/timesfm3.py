@@ -42,7 +42,6 @@ class TimesFM3Adapter(BaseAdapter):
             max_horizon=1024,
             compiles_context_horizon=False,
             supports_batch_inference=True,
-            license_policy="restricted",
             license_notice=(
                 "TimesFM Non-Commercial License v1.0: "
                 "Weights restricted to non-commercial, non-production use only. "

@@ -281,8 +281,7 @@ class ModelCapabilities:
     # Batching
     supports_batch_inference: bool = False
 
-    # Licensing
-    license_policy: Literal["permissive", "restricted"] = "permissive"
+    # Informational license terms for the model and its weights.
     license_notice: str = ""
 
     # Status

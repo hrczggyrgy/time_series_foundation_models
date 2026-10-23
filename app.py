@@ -21,7 +21,7 @@ from statsmodels.tsa.stattools import adfuller
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Import our modular forecasting components
-from forecasting.service import ForecastingService, generate_demo_data, LicensePolicy
+from forecasting.service import ForecastingService, generate_demo_data
 from forecasting.registry import ModelRegistry, get_registry
 from forecasting.contracts import RuntimeConfig
 from forecasting.reporting.exports import generate_run_id
@@ -83,7 +83,6 @@ class ForecastConfigUI:
     n_backtest_windows: int
     autopilot: bool
     auto_fix_data: bool
-    license_policy: LicensePolicy
     model_key: str
 
 
@@ -102,7 +101,6 @@ def init_session_state() -> None:
         "run_metadata": None,
         "analysis_ready": False,
         "service": None,
-        "acknowledged_models": set(),
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -451,7 +449,7 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
     service: ForecastingService = st.session_state.service
 
     # Get all available models (exclude experimental by default)
-    all_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=False)
+    all_models = service.list_models(include_experimental=False)
     model_options = {m["model_key"]: m["display_name"] for m in all_models}
     model_keys = list(model_options.keys())
 
@@ -530,7 +528,7 @@ def render_sidebar(profile_results: dict[str, Any] | None) -> tuple[ForecastConf
         max_hz = f"{caps['max_horizon']:,}" if caps['max_horizon'] else 'N/A'
         exp_str = " ⚠️ EXPERIMENTAL" if caps.get('experimental', False) else ""
         st.sidebar.caption(f"""Primary model: `{model_options[selected_model]}`
-License: {caps['license_policy']}
+License notice: {caps['license_notice']}
 Max context: {max_ctx}
 Max horizon: {max_hz}
 Quantiles: {len(caps['native_quantiles'])} native{exp_str}
@@ -541,7 +539,7 @@ Compare with: {', '.join([model_options[m] for m in selected_models[1:]]) if len
         business_days_only=business_days_only, backtest_mode=backtest_mode,
         n_backtest_windows=n_backtest_windows,
         autopilot=autopilot, auto_fix_data=auto_fix_data,
-        license_policy=LicensePolicy.RESEARCH, model_key=selected_model,
+        model_key=selected_model,
     ), data_source, selected_models
 
 
@@ -746,7 +744,7 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
 
                 # Get available non-experimental models to filter selected_models
                 service: ForecastingService = st.session_state.service
-                available_models = service.list_models(LicensePolicy.RESEARCH, set(), include_experimental=False)
+                available_models = service.list_models(include_experimental=False)
                 available_keys = {m["model_key"] for m in available_models}
                 
                 # Filter selected_models to only include available (non-experimental) models
@@ -756,9 +754,6 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
                     return
 
                 # Run forecasts for all selected models
-                policy = ui_config.license_policy
-                acknowledged = set()  # All models enabled
-
                 jobs = {}
                 for model_key in filtered_models:
                     with st.spinner(f"Running {model_key}..."):
@@ -771,8 +766,6 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
                                 runtime_config=runtime,
                                 business_days_only=ui_config.business_days_only,
                                 quantile_levels=DEFAULT_QUANTILE_LEVELS,
-                                policy=policy,
-                                acknowledged=acknowledged,
                             )
                         else:
                             job = service.run_forecast(
@@ -782,8 +775,6 @@ def render_tab_forecast(ui_config: ForecastConfigUI, selected_models: list[str])
                                 runtime_config=runtime,
                                 business_days_only=ui_config.business_days_only,
                                 quantile_levels=DEFAULT_QUANTILE_LEVELS,
-                                policy=policy,
-                                acknowledged=acknowledged,
                             )
                         jobs[model_key] = job
 

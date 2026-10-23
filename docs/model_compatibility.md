@@ -114,7 +114,7 @@ outputs = list(forecaster.forecast([target], horizon=24))
 - Weights under Modified MIT with revenue restriction: **not authorized if company/employer monthly revenue > $20M**
 - Applies to model, derivatives, modifications, combined works
 - Commercial license available from Mistral AI (sales@mistral.ai)
-- Application must display notice and obtain acknowledgment
+- Users must review and comply with the applicable model and weights terms
 
 **API Reference (from Hugging Face model card):**
 ```python
@@ -243,21 +243,9 @@ out = model.predict(context, horizon=64, quantile_levels=[0.1, 0.5, 0.9], future
 
 ---
 
-## License Policy Classification
+## Model License Information
 
-| Model Key | Policy Classification | Reason |
-|-----------|----------------------|--------|
-| `timesfm_2_5` | **permissive** | Apache-2.0 weights and code |
-| `timesfm_3` | **restricted** | Non-commercial license v1.0 on weights |
-| `timestral_209m` | **restricted** | Modified MIT with $20M revenue cap |
-| `timestral_28m` | **restricted** | Modified MIT with $20M revenue cap |
-| `t0_gamma` | **permissive** | Apache-2.0 weights and code |
-| `naive` | **permissive** | No weights |
-| `seasonal_naive` | **permissive** | No weights |
-
-**Application Policies:**
-- `permissive_only`: Enable only `timesfm_2_5`, `t0_gamma`, `naive`, `seasonal_naive`
-- `research`: Additionally allow `timesfm_3`, `timestral_209m`, `timestral_28m` after notice + acknowledgment
+The model license terms are documented in each model's section above and displayed as informational notices in the app. The app does not filter model availability or enforce license eligibility; users are responsible for complying with the applicable terms.
 
 ---
 
@@ -296,11 +284,11 @@ Before marking any model `VERIFIED`, the following must pass:
 
 1. Create `pyproject.toml` with pinned dependencies
 2. Implement `forecasting/contracts.py` with typed dataclasses
-3. Implement `forecasting/registry.py` with license policy
+3. Implement `forecasting/registry.py` with model registry metadata
 4. Refactor TimesFM 2.5 into `forecasting/adapters/timesfm25.py`
 5. Implement naive baselines in `forecasting/adapters/naive.py`
 6. Implement t0-gamma adapter (permissive, good first integration)
 7. Implement Timestral adapters
-8. Implement TimesFM 3.0 adapter (research-gated)
+8. Implement TimesFM 3.0 adapter
 9. Rebuild backtesting around forecast origins
 10. Add multivariate/covariate support

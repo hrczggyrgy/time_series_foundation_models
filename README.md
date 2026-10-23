@@ -17,25 +17,23 @@ pinned: false
 
 **Live demo:** https://huggingface.co/spaces/hrczggyorgy/TSFMs_forecasting
 
-A modular, extensible zero-shot forecasting workbench supporting 7 foundation models with unified probabilistic outputs, leakage-free backtesting, and license-aware model selection.
+A modular, extensible zero-shot forecasting workbench supporting 7 foundation models with unified probabilistic outputs, leakage-free backtesting, and model license notices.
 
 ---
 
 ## Supported Models
 
-| Model | Parameters | License | Policy | Multivariate | Covariates | Context | Horizon | Quantiles |
-|-------|------------|---------|--------|--------------|------------|---------|---------|-----------|
-| TimesFM 2.5 | 200M | Apache-2.0 | Permissive | No | Future-only | 16k | 512 | 9 (0.1-0.9) |
-| TimesFM 3.0 | 330M | Non-commercial v1.0 | Research | Yes | Full | 32k+ | 1024 | 9 (0.1-0.9) |
-| t0-gamma | 100M+ | Apache-2.0 | Permissive | Yes | Full | 512 | 1024 | 21 (0.01-0.99) |
-| Timestral 209M | 209M | Modified MIT ($20M cap) | Research | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
-| Timestral 28M | 28M | Modified MIT ($20M cap) | Research | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
-| Timestral 123M | 123M | Modified MIT ($20M cap) | Research | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
-| Timestral 5M | 5M | Modified MIT ($20M cap) | Research | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
-| Naive | — | — | Permissive | No | No | Any | Any | None |
-| Seasonal Naive | — | — | Permissive | No | No | Any | Any | None |
-
-> **License Policy**: Default `permissive_only` enables only Apache-2.0 models. Switch to `research` mode to access restricted models after acknowledging their license terms.
+| Model | Parameters | License | Multivariate | Covariates | Context | Horizon | Quantiles |
+|-------|------------|---------|--------------|------------|---------|---------|-----------|
+| TimesFM 2.5 | 200M | Apache-2.0 | No | Future-only | 16k | 512 | 9 (0.1-0.9) |
+| TimesFM 3.0 | 330M | Non-commercial v1.0 | Yes | Full | 32k+ | 1024 | 9 (0.1-0.9) |
+| t0-gamma | 100M+ | Apache-2.0 | Yes | Full | 512 | 1024 | 21 (0.01-0.99) |
+| Timestral 209M | 209M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
+| Timestral 28M | 28M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
+| Timestral 123M | 123M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
+| Timestral 5M | 5M | Modified MIT ($20M cap) | Yes | Full | 32k | 1024 | 21 (0.01-0.99) |
+| Naive | — | — | No | No | Any | Any | None |
+| Seasonal Naive | — | — | No | No | Any | Any | None |
 
 ---
 
@@ -67,7 +65,7 @@ A modular, extensible zero-shot forecasting workbench supporting 7 foundation mo
 - Run ID tracking — unique identifier for every forecast/backtest job
 
 ### UX & Operations
-- License policy selector — permissive-only vs research mode with acknowledgment flow
+- License notice shown for the selected model
 - Model capability badges — multivariate, covariates, context, horizon, quantiles at a glance
 - Autopilot mode — recommended horizon/context based on data frequency
 - Docker-ready — CPU/GPU, persistent model cache volume
@@ -140,7 +138,7 @@ Deploy directly from this repo — the Space auto-builds from the `Dockerfile`.
 1. DATA                 2. DIAGNOSTICS           3. FORECAST              4. EVALUATION
    Upload CSV / Demo       Trend (p-value)          Model select            MAE / RMSE / MAPE
    Column mapping          Stationarity (ADF)       Horizon / interval      MASE / CRPS
-   Auto-fix gaps/dups      Seasonal periods         Permissive/Research     Coverage / Width
+   Auto-fix gaps/dups      Seasonal periods            Model license notice    Coverage / Width
    Validation report       Outlier count            Backtest toggle         Per-window table
 ```
 
@@ -150,11 +148,8 @@ Deploy directly from this repo — the Space auto-builds from the `Dockerfile`.
 - **Minimum**: 32 observations (model-dependent)
 
 ### Model Selection
-1. Choose **License Policy** in sidebar:
-   - `Permissive only` → TimesFM 2.5, t0-gamma, Naive baselines
-   - `Research` → All models (requires acknowledgment for restricted)
-2. Select **Model** — capability badges show multivariate, covariates, context, horizon
-3. Acknowledge license if prompted (TimesFM 3.0, Timestral)
+1. Select **Model** — capability details and its license notice appear in the sidebar.
+2. Review the model and weights license terms before use. The app does not filter models or enforce license eligibility.
 
 ---
 
@@ -192,7 +187,7 @@ The app auto-detects CUDA/MPS/CPU.
 │
 ├── forecasting/              # Core forecasting library
 │   ├── contracts.py          # ForecastRequest, ForecastResult, ModelCapabilities, ForecastAdapter
-│   ├── registry.py           # ModelRegistry with license policy enforcement
+│   ├── registry.py           # ModelRegistry
 │   ├── exceptions.py         # Domain exceptions
 │   ├── service.py            # ForecastingService (high-level orchestration)
 │   │
@@ -235,7 +230,7 @@ The app auto-detects CUDA/MPS/CPU.
 - Non-commercial v1.0: TimesFM 3.0 (self-hosted only; commercial via BigQuery ML)
 - Modified MIT ($20M revenue cap): Timestral family (commercial license from Mistral AI)
 
-> This application does not grant rights absent from model licenses. The `research` policy is informational only.
+> This application does not grant rights absent from model licenses. Model selection is not license-gated; users are responsible for complying with each model's terms.
 
 ---
 
@@ -253,7 +248,7 @@ The app auto-detects CUDA/MPS/CPU.
 
 1. Fork & create feature branch
 2. Add model adapter in `forecasting/adapters/` implementing `ForecastAdapter`
-3. Register in `forecasting/registry.py` with correct license policy
+3. Register in `forecasting/registry.py` with accurate capability and license notice metadata
 4. Add entry to `docs/model_compatibility.md`
 5. Submit PR with smoke test results
 

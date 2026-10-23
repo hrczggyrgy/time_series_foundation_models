@@ -39,7 +39,6 @@ class TimesFM25Adapter(BaseAdapter):
             max_horizon=512,
             compiles_context_horizon=True,
             supports_batch_inference=True,
-            license_policy="permissive",
             license_notice="Apache-2.0 (weights and code)",
         )
 
