@@ -366,7 +366,9 @@ class ModelRegistry:
         """
         available = []
         for entry in self._entries.values():
-            if entry.capabilities.experimental and not include_experimental:
+            if (
+                entry.experimental or entry.capabilities.experimental
+            ) and not include_experimental:
                 continue
             available.append(entry)
         return available

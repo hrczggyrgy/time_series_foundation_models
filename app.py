@@ -371,7 +371,8 @@ def explain_forecast_results(profile: dict[str, Any], forecast_df: pd.DataFrame,
     if lo_col and hi_col:
         avg_band = float((forecast_df[hi_col] - forecast_df[lo_col]).mean())
         text.append(f"Average uncertainty band width is {avg_band:.2f}; larger numbers indicate less certainty.")
-    text.append(f"The model used {meta['ctx_used']:,} recent data point(s) out of the {MODEL_CONTEXT_LIMIT:,}-point maximum context.")
+    context_used = meta.get("ctx_used", profile["basic_stats"]["context_used"])
+    text.append(f"The model used {context_used:,} recent data point(s) out of the {MODEL_CONTEXT_LIMIT:,}-point maximum context.")
     if profile["basic_stats"]["all_non_negative"]:
         text.append("Because the historical series is non-negative, the model was configured to keep future values non-negative as well.")
     return text
