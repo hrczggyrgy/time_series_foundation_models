@@ -995,7 +995,7 @@ def render_hybrid_forecast(
     else:
         st.warning(
             f"Base-only fallback · selected base: **{hybrid.base_model_key}**. "
-            "The residual correction did not complete."
+            "No residual correction was applied."
         )
 
     base_col, residual_col = st.columns(2)
@@ -1024,7 +1024,7 @@ def render_hybrid_forecast(
             hide_index=True,
         )
     else:
-        residual_col.info("No residual model passed validation.")
+        residual_col.info("No residual model improved on the base validation score.")
 
     st.caption(
         f"Search completed in {hybrid.timing.get('total_seconds', 0.0):.1f}s "

@@ -593,6 +593,19 @@ def run_autonomous_hybrid(
     stage_timings["residual_search_seconds"] = (
         time.perf_counter() - residual_search_started
     )
+    residual_selection_warning: str | None = None
+    if (
+        best_residual is not None
+        and best_residual.mae is not None
+        and best_residual.rmse is not None
+        and (best_residual.mae, best_residual.rmse)
+        >= (best_base.mae, best_base.rmse)
+    ):
+        residual_selection_warning = (
+            f"The best residual correction ({best_residual.model_key}) did not improve "
+            "the base model on the rolling selection folds; returning the base-only forecast."
+        )
+        best_residual = None
     residual_validation = (
         residual_validation_by_key.get(best_residual.model_key) if best_residual else None
     )
@@ -607,6 +620,8 @@ def run_autonomous_hybrid(
     holdout_metrics: dict[str, float | None] | None = None
 
     warnings: list[str] = []
+    if residual_selection_warning is not None:
+        warnings.append(residual_selection_warning)
     if residual_preparation_error is not None:
         warnings.append(
             "Out-of-sample residual training data could not be prepared; "
@@ -749,7 +764,7 @@ def run_autonomous_hybrid(
                 )
         else:
             warnings.append(
-                "No residual model completed validation; returning the base-only forecast."
+                "No residual model improved on base validation; returning the base-only forecast."
             )
         if status == "hybrid" and final_base_result.quantiles is not None:
             final_quantiles = final_base_result.quantiles + correction[:, :, np.newaxis]

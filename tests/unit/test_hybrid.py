@@ -291,3 +291,28 @@ def test_oof_preparation_failure_falls_back_and_keeps_base_holdout_score():
     assert result.holdout_metrics["base_mae"] == 2.0
     assert result.holdout_metrics["hybrid_mae"] is None
     assert any("simulated OOF preparation failure" in warning for warning in result.warnings)
+
+
+def test_worse_residual_candidate_is_rejected_in_favor_of_base_forecast():
+    base = _ConstantAdapter("constant_base")
+    service = _Service({"constant_base": base})
+
+    with patch(
+        "forecasting.hybrid._predict_residual_model",
+        return_value=np.full((1, 5), -10.0),
+    ):
+        result = ForecastingService.run_autonomous_hybrid(
+            service,
+            _parsed_data(100),
+            horizon=5,
+            runtime_config=RuntimeConfig(device="cpu"),
+            n_windows=3,
+        )
+
+    assert result.status == "base_only"
+    assert result.residual_model_key is None
+    assert result.residual_validation is None
+    assert np.array_equal(result.result.point, result.base_forecast)
+    assert result.holdout_metrics is not None
+    assert result.holdout_metrics["hybrid_mae"] is None
+    assert any("did not improve the base model" in warning for warning in result.warnings)
